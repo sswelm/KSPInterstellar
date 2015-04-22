@@ -5,37 +5,85 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using UnityEngine;
 
 namespace FNPlugin  {
-    class AtmosphericIntake : PartModule {
+    class AtmosphericIntake : PartModule
+    {
+        protected Vector3 _intake_direction;
+        protected PartResourceDefinition _resource;
+        protected float _intake_speed;
+
+        [KSPField(guiName = "Atm Flow", guiUnits = "U", guiFormat = "F2", isPersistant = false, guiActive = false)]
+        public float airFlow;
+        [KSPField(guiName = "Atm Speed", guiUnits = "M/s", guiFormat = "F2", isPersistant = false, guiActive = false)]
+        public float airSpeed;
+        [KSPField(isPersistant = false)]
+        public float aoaThreshold = 0.1f;
         [KSPField(isPersistant = false)]
         public float area;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Intake Atmosphere")]
-        public string intakeval;
-        protected float airf;
+        [KSPField(isPersistant = false)]
+        public string intakeTransformName;
+        [KSPField(isPersistant = false)]
+        public float maxIntakeSpeed = 100;
+        [KSPField(isPersistant = false)]
+        public float unitScalar = 0.2f;
+        [KSPField(isPersistant = false)]
+        public bool useIntakeCompensation = true;
+        [KSPField(isPersistant = false)]
+        public bool storesResource = false;
 
-		protected PartResource _intake_atm = null;
-
-        public override void OnStart(PartModule.StartState state) {
-            _intake_atm = part.Resources.Contains(InterstellarResourcesConfiguration.Instance.IntakeAtmosphere) ? part.Resources[InterstellarResourcesConfiguration.Instance.IntakeAtmosphere] : null;
+        public override void OnStart(PartModule.StartState state)
+        {
+            Transform intakeTransform = part.FindModelTransform(intakeTransformName);
+            if (intakeTransform == null)
+                Debug.Log("[KSPI] AtmosphericIntake unable to get intake transform for " + part.name);
+            _intake_direction = intakeTransform != null ? intakeTransform.forward.normalized : Vector3.forward;
+            _resource = PartResourceLibrary.Instance.GetDefinition(InterstellarResourcesConfiguration.Instance.IntakeAtmosphere);
         }
 
-        public override void OnUpdate() {
-            intakeval = airf.ToString("0.00") + " kg";
-        }
+        public void FixedUpdate()
+        {
+            if (vessel == null)
+                return;
 
-        public void FixedUpdate() {
-            if (HighLogic.LoadedSceneIsFlight && _intake_atm != null)
+            airSpeed = (float)vessel.srf_velocity.magnitude + _intake_speed;
+
+            float intakeAngle = Mathf.Clamp(Vector3.Dot((Vector3)vessel.srf_velocity.normalized, _intake_direction), 0, 1);
+            float intakeExposure = (intakeAngle > aoaThreshold ? intakeAngle * (airSpeed * unitScalar + _intake_speed) : _intake_speed) * area * unitScalar;
+            airFlow = ((float)vessel.atmDensity) * intakeExposure / _resource.density;
+            double airThisUpdate = airFlow * TimeWarp.fixedDeltaTime;
+            if (!storesResource)
             {
-                double resourcedensity = PartResourceLibrary.Instance.GetDefinition(InterstellarResourcesConfiguration.Instance.IntakeAtmosphere).density;
-                double airdensity = part.vessel.atmDensity / 1000;
-                double airspeed = part.vessel.srf_velocity.magnitude + 100.0;
-                double air = airspeed * airdensity * area / resourcedensity * TimeWarp.fixedDeltaTime;
-                airf = (float)(1000.0 * air / TimeWarp.fixedDeltaTime * resourcedensity);
+                foreach (PartResource resource in part.Resources)
+                {
+                    if (resource.resourceName != _resource.name)
+                        continue;
 
-                air = _intake_atm.amount = Math.Min(air / TimeWarp.fixedDeltaTime, _intake_atm.maxAmount);
-                part.ImprovedRequestResource(InterstellarResourcesConfiguration.Instance.IntakeAtmosphere, -air);
+                    airThisUpdate = airThisUpdate >= 0 ? (airThisUpdate <= resource.maxAmount ? airThisUpdate : resource.maxAmount) : 0;
+                    resource.amount = airThisUpdate;
+                    break;
+                }
+            }
+            else
+                part.ImprovedRequestResource(_resource.name, -airThisUpdate);
+
+            if (!useIntakeCompensation)
+                return;
+
+            foreach (PartResource resource in part.Resources)
+            {
+                if (resource.resourceName != _resource.name)
+                    continue;
+
+                if (airThisUpdate > resource.amount && resource.amount != 0.0)
+                    _intake_speed = Mathf.Lerp(_intake_speed, 0f, TimeWarp.fixedDeltaTime);
+                else
+                    _intake_speed = Mathf.Lerp(_intake_speed, maxIntakeSpeed, TimeWarp.fixedDeltaTime);
+
+                break;
             }
         }
+
     }
 }

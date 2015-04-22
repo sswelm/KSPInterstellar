@@ -1,20 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Linq;
 using UnityEngine;
 
-namespace FNPlugin {
-    
+namespace FNPlugin 
+{
     class InterstellarTokamakFusionReator : InterstellarFusionReactor
     {
         [KSPField(isPersistant = false, guiActive = true, guiName = "Heating maintance")]
         public string tokomakPower;
 
-        // 
         protected bool fusion_alert = false;
         protected double power_consumed = 0.0;
-        protected float plasma_ratio = 1.0f;
+
+        [KSPField(isPersistant = false, guiActive = true, guiName = "Plasma Ratio")]
+        public float plasma_ratio = 1.0f;
 
         // properties
 
@@ -26,29 +24,36 @@ namespace FNPlugin {
 
         public override string TypeName { get { return (isupgraded ? upgradedName != "" ? upgradedName : originalName : originalName) + " Reactor"; } }
 
-        public float HeatingPowerRequirements { get { return current_fuel_mode == null ? powerRequirements : (float)(powerRequirements * current_fuel_mode.NormalisedPowerRequirements); } }
-
-
+        public float HeatingPowerRequirements 
+		{ 
+			get { 
+				return current_fuel_mode == null 
+					? powerRequirements 
+					: (float)(powerRequirements * current_fuel_mode.NormalisedPowerRequirements); 
+			} 
+		}
 
         public override void OnUpdate() 
         {
             base.OnUpdate();
-            if (getCurrentResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) > 
-                getStableResourceSupply(FNResourceManager.FNRESOURCE_MEGAJOULES) && 
-                getResourceBarRatio(FNResourceManager.FNRESOURCE_MEGAJOULES) < 0.1 
+            if (
+                getCurrentHighPriorityResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) * 1.2 > getStableResourceSupply(FNResourceManager.FNRESOURCE_MEGAJOULES)
+                // getCurrentResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) > getStableResourceSupply(FNResourceManager.FNRESOURCE_MEGAJOULES)
+                // && getResourceBarRatio(FNResourceManager.FNRESOURCE_MEGAJOULES) < 0.1 
                 && IsEnabled && !fusion_alert) 
             {
                 ScreenMessages.PostScreenMessage("Warning: Fusion Reactor plasma heating cannot be guaranteed, reducing power requirements is recommended.", 10.0f, ScreenMessageStyle.UPPER_CENTER);
                 fusion_alert = true;
-            } else 
-            {
+            } 
+            else 
                 fusion_alert = false;
-            }
+
             Events["SwapFuelMode"].active = isupgraded;
             tokomakPower = PluginHelper.getFormattedPowerString(power_consumed);
         }
 
-        public override void OnFixedUpdate() {
+        public override void OnFixedUpdate() 
+        {
             base.OnFixedUpdate();
             if (IsEnabled) 
             {
@@ -65,11 +70,13 @@ namespace FNPlugin {
             base.OnStart(state);
         }
 
-        public override string getResourceManagerDisplayName() {
+        public override string getResourceManagerDisplayName() 
+        {
             return TypeName;
         }
 
-        public override int getPowerPriority() {
+        public override int getPowerPriority() 
+        {
             return 1;
         }
 

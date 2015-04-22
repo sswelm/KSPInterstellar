@@ -38,8 +38,8 @@ namespace FNPlugin {
         public bool startDisabled;
 
         // Persistent False
-        [KSPField(isPersistant = false)]
-        public float heatTransportationEfficiency = 0.7f;
+        [KSPField(isPersistant = false, guiActiveEditor = true)]
+        public float heatTransportationEfficiency = 0.8f;
         [KSPField(isPersistant = false)]
         public float ReactorTemp;
         [KSPField(isPersistant = false)]
@@ -60,7 +60,7 @@ namespace FNPlugin {
         public string originalName;
         [KSPField(isPersistant = false)]
         public float upgradeCost;
-        [KSPField(isPersistant = false)]
+        [KSPField(isPersistant = false, guiActiveEditor = true, guiActive = false, guiName = "Radius")]
         public float radius;
         [KSPField(isPersistant = false)]
         public float minimumThrottle = 0;
@@ -86,29 +86,29 @@ namespace FNPlugin {
         public float PowerOutput;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "upgraded Power Output", guiUnits = " MW")]
         public float upgradedPowerOutput;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Upgrade")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Upgrade")]
         public string upgradeTechReq = String.Empty;
 
         // GUI strings
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Type")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Type")]
         public string reactorTypeStr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Core Temp")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Core Temp")]
         public string coretempStr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Status")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Status")]
         public string statusStr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Thermal Power")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Thermal Power")]
         public string currentTPwr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Charged Power")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Charged Power")]
         public string currentCPwr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiName = "Fuel")]
+        [KSPField(isPersistant = false, guiActive = false, guiName = "Fuel")]
         public string fuelModeStr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Connections")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Connections")]
         public string connectedRecieversStr = String.Empty;
 
         // Gui floats
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Empty Mass", guiUnits = " t")]
         public float partMass = 0;
-	    [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Max Thermal Power", guiUnits = " MW")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Max Thermal Power", guiUnits = " MW")]
 		public float maximumThermalPowerFloat = 0;
 
         // value types
@@ -140,7 +140,7 @@ namespace FNPlugin {
         {
             try
             {
-                UnityEngine.Debug.Log("[KSPI] - InterstellarReactor.ConnectReciever: Guid: " + key + " radius: " + radius);
+                //UnityEngine.Debug.Log("[KSPI] - InterstellarReactor.ConnectReciever: Guid: " + key + " radius: " + radius);
 
                 if (!connectedRecievers.ContainsKey(key))
                 {
@@ -224,8 +224,7 @@ namespace FNPlugin {
             get 
             {
                 float thermal_fuel_factor = current_fuel_mode == null ? 1.0f : (float)current_fuel_mode.NormalisedReactionRate;
-                var result = isupgraded && upgradedPowerOutput != 0 ? upgradedPowerOutput : PowerOutput;
-                return result * (1.0f - ChargedParticleRatio) * thermal_fuel_factor;
+                return RawPowerOutput * (1.0f - ChargedParticleRatio) * thermal_fuel_factor;
             } 
         }
 
@@ -255,6 +254,11 @@ namespace FNPlugin {
         public bool IsUpgradeable { get {return upgradedName != ""; } }
 
         public virtual float MaximumPower { get { return MaximumThermalPower + MaximumChargedPower; } }
+
+        public virtual float StableMaximumThermalPower { get { return IsEnabled ? RawPowerOutput : 0; } }
+
+        public virtual float RawPowerOutput { get { return isupgraded && upgradedPowerOutput != 0 ? upgradedPowerOutput : PowerOutput; } }
+
 
         [KSPEvent(guiActive = true, guiName = "Activate Reactor", active = false)]
         public void ActivateReactor() 
@@ -672,7 +676,9 @@ namespace FNPlugin {
                     double amount = Math.Min(consume_amount, part.Resources[fuel.FuelName].amount / FuelEfficiency);
                     part.Resources[fuel.FuelName].amount -= amount;
                     return amount;
-                } else return 0;
+                } 
+                else 
+                    return 0;
             } 
             return part.ImprovedRequestResource(fuel.FuelName, consume_amount / FuelEfficiency);
         }
@@ -681,8 +687,10 @@ namespace FNPlugin {
         {
             if (!consumeGlobal) 
             {
-                if (part.Resources.Contains(fuel.FuelName)) return part.Resources[fuel.FuelName].amount;
-                else return 0;
+                if (part.Resources.Contains(fuel.FuelName)) 
+                    return part.Resources[fuel.FuelName].amount;
+                else 
+                    return 0;
             } 
             return part.GetConnectedResources(fuel.FuelName).Sum(rs => rs.amount);
         }
@@ -693,50 +701,53 @@ namespace FNPlugin {
                 windowPosition = GUILayout.Window(windowID, windowPosition, Window, "Reactor System Interface");
         }
 
+        private void PrintToGUILayout(string label, string value, GUIStyle style, int witdh = 150)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(label, style, GUILayout.Width(witdh));
+            GUILayout.Label(value, GUILayout.Width(witdh));
+            GUILayout.EndHorizontal();
+        }
+
         private void Window(int windowID) 
         {
             bold_label = new GUIStyle(GUI.skin.label);
             bold_label.fontStyle = FontStyle.Bold;
-            if (GUI.Button(new Rect(windowPosition.width - 20, 2, 18, 18), "x")) {
+
+            if (GUI.Button(new Rect(windowPosition.width - 20, 2, 18, 18), "x")) 
                 render_window = false;
-            }
             GUILayout.BeginVertical();
+
             GUILayout.BeginHorizontal();
             GUILayout.Label(TypeName, bold_label, GUILayout.ExpandWidth(true));
             GUILayout.EndHorizontal();
-            GUILayout.BeginHorizontal();
+
+            PrintToGUILayout("Radius", radius.ToString() + "m", bold_label);
+            PrintToGUILayout("Core Temperature", coretempStr, bold_label);
+            PrintToGUILayout("Status", statusStr, bold_label);
+
             if (ChargedParticleRatio < 1.0)
             {
-                GUILayout.Label("Current Thermal Power", bold_label, GUILayout.Width(150));
-                GUILayout.Label(currentTPwr, GUILayout.Width(150));
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Max Thermal Power", bold_label, GUILayout.Width(150));
-                GUILayout.Label(PluginHelper.getFormattedPowerString(MaximumThermalPower) + "_th", GUILayout.Width(150));
-                GUILayout.EndHorizontal();
+                PrintToGUILayout("Current Thermal Power", currentTPwr, bold_label);
+                PrintToGUILayout("Max Thermal Power", PluginHelper.getFormattedPowerString(MaximumThermalPower) + "_th", bold_label);
             }
-            if (ChargedParticleRatio > 0) {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Current Charged Power", bold_label, GUILayout.Width(150));
-                GUILayout.Label(currentCPwr, GUILayout.Width(150));
-                GUILayout.EndHorizontal();
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Max Charged Power", bold_label, GUILayout.Width(150));
-                GUILayout.Label(PluginHelper.getFormattedPowerString(MaximumChargedPower) + "_cp", GUILayout.Width(150));
-                GUILayout.EndHorizontal();
+            if (ChargedParticleRatio > 0) 
+            {
+                PrintToGUILayout("Current Charged Power", currentCPwr, bold_label);
+                PrintToGUILayout("Max Charged Power", PluginHelper.getFormattedPowerString(MaximumChargedPower) + "_cp", bold_label);
             }
-            if (current_fuel_mode != null & current_fuel_mode.ReactorFuels != null) {
+            if (current_fuel_mode != null & current_fuel_mode.ReactorFuels != null) 
+            {
                 if (!current_fuel_mode.Aneutronic && breedtritium)
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("Tritium Breed Rate", bold_label, GUILayout.Width(150));
-                    GUILayout.Label((tritium_produced_f * GameConstants.EARH_DAY_SECONDS).ToString("0.000") + " l/day", GUILayout.Width(150));
-                    GUILayout.EndHorizontal();
-                }
+                    PrintToGUILayout("Tritium Breed Rate", (tritium_produced_f * GameConstants.EARH_DAY_SECONDS).ToString("0.000") + " l/day", bold_label);
+
+                PrintToGUILayout("Fuel Mode", fuelModeStr, bold_label);
+
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Fuel", bold_label, GUILayout.Width(150));
                 GUILayout.Label("Usage", bold_label, GUILayout.Width(150));
                 GUILayout.EndHorizontal();
+
                 double fuel_lifetime_d = double.MaxValue;
                 foreach(ReactorFuel fuel in current_fuel_mode.ReactorFuels) 
                 {
@@ -748,29 +759,35 @@ namespace FNPlugin {
                     GUILayout.Label(fuel_use.ToString("0.0000") + " " + fuel.Unit + "/day", GUILayout.Width(150));
                     GUILayout.EndHorizontal();
                 }
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Current Lifetime");
-                GUILayout.Label( (double.IsNaN(fuel_lifetime_d) ? "-" : (fuel_lifetime_d).ToString("0.00")) + " days", GUILayout.Width(150));
-                GUILayout.EndHorizontal();
+
+                PrintToGUILayout("Current Lifetime", (double.IsNaN(fuel_lifetime_d) ? "-" : (fuel_lifetime_d).ToString("0.00")) + " days", bold_label);
             }
+
             if (!IsNuclear)
             {
                 GUILayout.BeginHorizontal();
-                if (IsEnabled) if (GUILayout.Button("Deactivate", GUILayout.ExpandWidth(true))) DeactivateReactor();
-                if (!IsEnabled) if (GUILayout.Button("Activate", GUILayout.ExpandWidth(true))) ActivateReactor();
+
+                if (IsEnabled && GUILayout.Button("Deactivate", GUILayout.ExpandWidth(true))) 
+                    DeactivateReactor();
+                if (!IsEnabled && GUILayout.Button("Activate", GUILayout.ExpandWidth(true))) 
+                    ActivateReactor();
+
                 GUILayout.EndHorizontal();
-            } else
+            } 
+            else
             {
                 if (IsEnabled)
                 {
                     GUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Shutdown", GUILayout.ExpandWidth(true))) IsEnabled = false;
+
+                    if (GUILayout.Button("Shutdown", GUILayout.ExpandWidth(true))) 
+                        IsEnabled = false;
+
                     GUILayout.EndHorizontal();
                 }
             }
             GUILayout.EndVertical();
             GUI.DragWindow();
-            
         }
 
 

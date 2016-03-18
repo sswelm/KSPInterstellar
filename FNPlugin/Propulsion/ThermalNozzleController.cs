@@ -1,4 +1,4 @@
-﻿using FNPlugin.Propulsion;
+using FNPlugin.Propulsion;
 using FNPlugin.Extensions;
 using OpenResourceSystem;
 using UnityEngine;
@@ -875,11 +875,33 @@ namespace FNPlugin
             {
                 _maxISP = Mathf.Sqrt(AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier();
 
-                float thrust = GetPowerThrustModifier() * GetHeatThrustModifier() * AttachedReactor.MaximumPower / _maxISP / PluginHelper.GravityConstant * GetHeatExchangerThrustDivisor() * _thrustPropellantMultiplier;
+                float thrust = GetPowerThrustModifier() * GetHeatThrustModifier() * AttachedReactor.MaximumPower / _maxISP / PluginHelper.GravityConstant * GetHeatExchangerThrustDivisor();
+                float max_thrust_in_space = thrust;
+                thrust *= _thrustPropellantMultiplier;
                 myAttachedEngine.maxFuelFlow = thrust / (PluginHelper.GravityConstant * _maxISP);
                 myAttachedEngine.maxThrust = thrust;
 
-                _minISP = _maxISP * ((thrust - maxPressureThresholdAtKerbinSurface) / thrust) * GetHeatExchangerThrustDivisor();
+                //_minISP = _maxISP * ((thrust - maxPressureThresholdAtKerbinSurface) / thrust) * GetHeatExchangerThrustDivisor();
+                //atmospherecurve.Add(0, _maxISP, 0, 0);
+                //atmospherecurve.Add(1, _minISP, 0, 0);
+                
+                float max_thrust_in_current_atmosphere = max_thrust_in_space;
+            
+                // update engine thrust/ISP for thermal noozle
+                if (!_currentpropellant_is_jet)
+                {
+                    pressureTreshold = exitArea * (float)GameConstants.EarthAtmospherePressureAtSeaLevel;
+                    if (_maxISP > GameConstants.MaxThermalNozzleIsp )
+                        pressureTreshold *= 10;
+
+                    max_thrust_in_current_atmosphere = max_thrust_in_space - pressureTreshold;
+
+                    var thrustAtmosphereRatio = max_thrust_in_space > 0 ? Math.Max(max_thrust_in_current_atmosphere / max_thrust_in_space, 0.01 ) : 0.01;
+                    _minISP = _maxISP * (float)thrustAtmosphereRatio;
+                }
+                else
+                    _minISP = _maxISP;
+
                 atmospherecurve.Add(0, _maxISP, 0, 0);
                 atmospherecurve.Add(1, _minISP, 0, 0);
 
@@ -987,20 +1009,27 @@ namespace FNPlugin
                 atmospheric_limit = GetAtmosphericLimit();
 
                 _maxISP = (float)(Math.Sqrt((double)AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier());
-                
-                expectedMaxThrust = (float)(AttachedReactor.MaximumPower * GetPowerThrustModifier() * GetHeatThrustModifier() / PluginHelper.GravityConstant / _maxISP);
+
+                expectedMaxThrust = (float)(AttachedReactor.MaximumPower * GetPowerThrustModifier() * GetHeatThrustModifier() / PluginHelper.GravityConstant / _maxISP * (float)GetHeatExchangerThrustDivisor());
+                float calculatedMaxThrust = expectedMaxThrust;
                 expectedMaxThrust *= _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / 200f);
 
-                myAttachedEngine.maxThrust = expectedMaxThrust;
-
-                // suggested by RzTen1 to improve compatibility with BetterBurnTime 
                 max_fuel_flow_rate = (float)(expectedMaxThrust / _maxISP / PluginHelper.GravityConstant);
 
-                pressureTreshold = _currentpropellant_is_jet ? 0 : exitArea * (float)FlightGlobals.getStaticPressure(vessel.transform.position);
-
+                if (!_currentpropellant_is_jet)
+                {
+                    pressureTreshold = exitArea * (float)FlightGlobals.getStaticPressure(vessel.transform.position);
+                    if (_maxISP > GameConstants.MaxThermalNozzleIsp)
+                        pressureTreshold *= 10;
+                }
+                else
+                    pressureTreshold = 0;
+            
                 var thrustAtmosphereRatio = expectedMaxThrust <= 0 ? 0 : Math.Max(0, expectedMaxThrust - pressureTreshold) / expectedMaxThrust;
 
                 current_isp = _maxISP * (float)thrustAtmosphereRatio;
+                calculatedMaxThrust -= pressureTreshold;
+                calculatedMaxThrust *= (float)_thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
 
                 FloatCurve newISP = new FloatCurve();
                 var effectiveIsp = isJet ? Mathf.Min(current_isp, PluginHelper.MaxThermalNozzleIsp) : current_isp;
@@ -1012,8 +1041,12 @@ namespace FNPlugin
                     double vcurve_at_current_velocity = myAttachedEngine.velCurve.Evaluate((float)vessel.srf_velocity.magnitude);
 
                     if (vcurve_at_current_velocity > 0 && !double.IsInfinity(vcurve_at_current_velocity) && !double.IsNaN(vcurve_at_current_velocity))
+                    {
                         max_fuel_flow_rate = (float)(max_fuel_flow_rate / vcurve_at_current_velocity);
+                        calculatedMaxThrust = calculatedMaxThrust / (float)vcurve_at_current_velocity;
+                    }
                 }
+                myAttachedEngine.maxThrust = calculatedMaxThrust > 0 ? calculatedMaxThrust : 0;
 
                 // set engines maximum fuel flow
                 myAttachedEngine.maxFuelFlow = Math.Min(1000f, (float)max_fuel_flow_rate);
@@ -1072,11 +1105,13 @@ namespace FNPlugin
             heatExchangerThrustDivisor = (float)GetHeatExchangerThrustDivisor();
             radiusModifier = (heatExchangerThrustDivisor * 100).ToString("0.00") + "%";
             engineMaxThrust = 0.01f;
+            float calculatedMaxThrust = 0;
             if (_availableThermalPower > 0)
             {
                 var ispRatio = _currentpropellant_is_jet ? current_isp / _maxISP : 1;
                 var thrustLimit = myAttachedEngine.thrustPercentage / 100.0f;
                 engineMaxThrust = (float)Math.Max(thrustLimit * GetPowerThrustModifier() * GetHeatThrustModifier() * thermal_power_received / _maxISP / PluginHelper.GravityConstant * heatExchangerThrustDivisor * ispRatio / myAttachedEngine.currentThrottle, 0.01);
+                calculatedMaxThrust = GetPowerThrustModifier() * GetHeatThrustModifier() * AttachedReactor.MaximumPower / _maxISP / PluginHelper.GravityConstant * heatExchangerThrustDivisor * ispRatio;
             }
 
             max_thrust_in_space = engineMaxThrust / myAttachedEngine.thrustPercentage * 100;
@@ -1097,13 +1132,21 @@ namespace FNPlugin
                 var thrustAtmosphereRatio = max_thrust_in_space > 0 ? Math.Max(max_thrust_in_current_atmosphere / max_thrust_in_space, 0.01 ) : 0.01;
                 UpdateIspEngineParams(thrustAtmosphereRatio);
                 current_isp = _maxISP * (float)thrustAtmosphereRatio;
+                calculatedMaxThrust -= pressureTreshold;
             }
             else
                 current_isp = _maxISP;
 
-            final_max_engine_thrust = !Single.IsInfinity(max_thrust_in_current_atmosphere) && !Single.IsNaN(max_thrust_in_current_atmosphere)
-                ? max_thrust_in_current_atmosphere * _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider)
-                : 0.000001f;
+            if (!Single.IsInfinity(max_thrust_in_current_atmosphere) && !Single.IsNaN(max_thrust_in_current_atmosphere))
+            {
+                final_max_engine_thrust = max_thrust_in_current_atmosphere * _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
+                calculatedMaxThrust *= (float)_thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
+            }
+            else
+            {
+                final_max_engine_thrust = 0.000001f;
+                calculatedMaxThrust = final_max_engine_thrust;
+            }
 
             // amount of fuel being used at max throttle with no atmospheric limits
             if (_maxISP <= 0) return;
@@ -1116,10 +1159,17 @@ namespace FNPlugin
                 vcurveAtCurrentVelocity = myAttachedEngine.velCurve.Evaluate((float)(vessel.speed / vessel.speedOfSound));
 
                 if (vcurveAtCurrentVelocity > 0 && !double.IsInfinity(vcurveAtCurrentVelocity) && !double.IsNaN(vcurveAtCurrentVelocity))
+                {
                     max_fuel_flow_rate = (float)(max_fuel_flow_rate * vcurveAtCurrentVelocity);
+                    calculatedMaxThrust *= (float)vcurveAtCurrentVelocity;
+                }
                 else
+                {
                     max_fuel_flow_rate = 0.000001f;
+                    calculatedMaxThrust = 0;
+                }
             }
+            myAttachedEngine.maxThrust = calculatedMaxThrust > 0 ? calculatedMaxThrust : 0;
 
             if (atmospheric_limit > 0 && atmospheric_limit != 1 && !double.IsInfinity(atmospheric_limit) && !double.IsNaN(atmospheric_limit))
                 max_fuel_flow_rate = max_fuel_flow_rate * atmospheric_limit;

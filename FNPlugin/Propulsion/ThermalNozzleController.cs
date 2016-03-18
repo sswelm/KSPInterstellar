@@ -1,4 +1,4 @@
-using FNPlugin.Propulsion;
+﻿using FNPlugin.Propulsion;
 using FNPlugin.Extensions;
 using OpenResourceSystem;
 using UnityEngine;
@@ -9,7 +9,7 @@ using TweakScale;
 
 namespace FNPlugin
 {
-    class ThermalNozzleController : FNResourceSuppliableModule, INoozle, IUpgradeableModule, IRescalable<ThermalNozzleController>
+    class ThermalNozzleController : FNResourceSuppliableModule, IEngineNoozle, IUpgradeableModule, IRescalable<ThermalNozzleController>
     {
 		// Persistent True
 		[KSPField(isPersistant = true)]
@@ -228,7 +228,7 @@ namespace FNPlugin
 
         protected List<FNModulePreecooler> _vesselPrecoolers;
         protected List<ModuleResourceIntake> _vesselResourceIntake;
-        protected List<INoozle> _vesselThermalNozzles;
+        protected List<IEngineNoozle> _vesselThermalNozzles;
 
         protected float jetTechBonus;
         protected float jetTechBonusPercentage;
@@ -310,6 +310,17 @@ namespace FNPlugin
             ResearchAndDevelopment.Instance.AddScience(-upgradeCost, TransactionReasons.RnDPartPurchase);
 		}
 
+        public float CurrentThrottle 
+        {
+            get
+            {
+                if (myAttachedEngine != null && myAttachedEngine.isOperational )
+                    return myAttachedEngine.currentThrottle;
+                else
+                    return 0;
+            } 
+        }
+
         public void upgradePartModule()
         {
             engineType = upgradedName;
@@ -331,7 +342,7 @@ namespace FNPlugin
 
         public void OnEditorAttach() 
         {
-            FindAttachedThermalSource();
+            ConnectToThermalSource();
 
             if (AttachedReactor == null) return;
 
@@ -373,7 +384,7 @@ namespace FNPlugin
             myAttachedEngine = this.part.FindModuleImplementing<ModuleEngines>();
 
             // find attached thermal source
-            FindAttachedThermalSource();
+            ConnectToThermalSource();
 
             // find intake we need to cool
             foreach (AttachNode attach_node in part.attachNodes.Where(a => a.attachedPart != null))
@@ -407,7 +418,7 @@ namespace FNPlugin
             // presearch all avaialble precoolers, intakes and nozzles on the vessel
             _vesselPrecoolers = vessel.FindPartModulesImplementing<FNModulePreecooler>();
             _vesselResourceIntake = vessel.FindPartModulesImplementing<ModuleResourceIntake>();
-            _vesselThermalNozzles = vessel.FindPartModulesImplementing<INoozle>();
+            _vesselThermalNozzles = vessel.FindPartModulesImplementing<IEngineNoozle>();
 
             fuel_gauge = part.stackIcon.DisplayInfo();
 
@@ -443,7 +454,6 @@ namespace FNPlugin
 
             try
             {
-
                 Fields["temperatureStr"].guiActive = showPartTemperature;
                 //Fields["chargedParticlePropulsionIsp"].guiActive = showChargedParticlePropulsionIsp;
             }
@@ -477,12 +487,19 @@ namespace FNPlugin
             }
         }
 
-        private void FindAttachedThermalSource()
+        private void ConnectToThermalSource()
         {
             var source = ThermalSourceSearchResult.BreadthFirstSearchForThermalSource(part, (p) => p.IsThermalSource, 10, 1);
-            if (source == null) return;
+            
+            if (source == null || source.Source == null) 
+            {
+                UnityEngine.Debug.LogWarning("[KSPI] - ThermalNozzleController - BreadthFirstSearchForThermalSource-Failed to find thermal source");
+                return;
+            }
 
             AttachedReactor = source.Source;
+            AttachedReactor.ConnectWithEngine(this);
+            
             partDistance = (int)Math.Max(Math.Ceiling(source.Cost) - 1, 0);
             UnityEngine.Debug.Log("[KSPI] - ThermalNozzleController - BreadthFirstSearchForThermalSource- Found thermal searchResult with distance " + partDistance);
         }
@@ -722,8 +739,6 @@ namespace FNPlugin
             }
         }
 
-
-
         private void UpdatePropellantModeBehavior(ConfigNode chosenpropellant)
         {
             _fuelmode = chosenpropellant.GetValue("guiName");
@@ -775,8 +790,6 @@ namespace FNPlugin
 
             if (!_currentpropellant_is_jet)
             {
-                //var effectiveIsp = Mathf.Min(_maxISP * (float)atmosphere_isp_efficiency, PluginHelper.MaxThermalNozzleIsp);
-
                 atmosphereCurve.Add(0, _maxISP * (float)atmosphere_isp_efficiency, 0, 0);
 
                 myAttachedEngine.useAtmCurve = false;
@@ -852,7 +865,7 @@ namespace FNPlugin
                     // divide current available intake resource by fuel useage across all engines
                     var intakeFuelRate = (float)Math.Min(currentintakeatm / fuelRateThermalJets, 1.0);
 
-                    atmospheric_limit = intakeFuelRate; //getEnginesRunningOfTypeForVessel(vessel, resourcename);
+                    atmospheric_limit = intakeFuelRate;
                 }
                 old_intake = currentintakeatm;
             }
@@ -875,16 +888,16 @@ namespace FNPlugin
             {
                 _maxISP = Mathf.Sqrt(AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier();
 
+                if (_maxISP <= 0)
+                    return;
+
                 float thrust = GetPowerThrustModifier() * GetHeatThrustModifier() * AttachedReactor.MaximumPower / _maxISP / PluginHelper.GravityConstant * GetHeatExchangerThrustDivisor();
                 float max_thrust_in_space = thrust;
                 thrust *= _thrustPropellantMultiplier;
+                
                 myAttachedEngine.maxFuelFlow = thrust / (PluginHelper.GravityConstant * _maxISP);
                 myAttachedEngine.maxThrust = thrust;
 
-                //_minISP = _maxISP * ((thrust - maxPressureThresholdAtKerbinSurface) / thrust) * GetHeatExchangerThrustDivisor();
-                //atmospherecurve.Add(0, _maxISP, 0, 0);
-                //atmospherecurve.Add(1, _minISP, 0, 0);
-                
                 float max_thrust_in_current_atmosphere = max_thrust_in_space;
             
                 // update engine thrust/ISP for thermal noozle
@@ -945,10 +958,9 @@ namespace FNPlugin
         {
             ConfigEffects();
 
-            if (cooledIntake != null)
+            if (cooledIntake != null && ((cooledIntake.part.temperature / cooledIntake.part.maxTemp) > (part.temperature / part.maxTemp)))
             {
-                if ((cooledIntake.part.temperature / cooledIntake.part.maxTemp) > (part.temperature / part.maxTemp))
-                    cooledIntake.part.temperature = (part.temperature / part.maxTemp) * cooledIntake.part.maxTemp;
+                cooledIntake.part.temperature = (part.temperature / part.maxTemp) * cooledIntake.part.maxTemp;
             }
 
             if (AttachedReactor == null)
@@ -969,8 +981,6 @@ namespace FNPlugin
             thermalRatio = (float)getResourceBarRatio(FNResourceManager.FNRESOURCE_THERMALPOWER);
             _currentMaximumPower = AttachedReactor.MaximumPower * delayedThrottle;
             _availableThermalPower = _currentMaximumPower * thermalRatio;
-
-            //staticPresure = (FlightGlobals.getStaticPressure(vessel.transform.position)).ToString("0.0000") + " kPa";
 
             // actively cool
             var wasteheatRatio = Math.Min(getResourceBarRatio(FNResourceManager.FNRESOURCE_WASTEHEAT), 1);
@@ -1000,15 +1010,11 @@ namespace FNPlugin
                 GenerateThrustFromReactorHeat();
             else
             {
-                //requestedReactorThermalPower = String.Empty;
-                //requestedReactorChargedPower = String.Empty;
-                //recievedReactorPower = String.Empty;
-
                 consumedWasteHeat = 0;
 
                 atmospheric_limit = GetAtmosphericLimit();
 
-                _maxISP = (float)(Math.Sqrt((double)AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier());
+                _maxISP = Mathf.Sqrt(AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier();
 
                 expectedMaxThrust = (float)(AttachedReactor.MaximumPower * GetPowerThrustModifier() * GetHeatThrustModifier() / PluginHelper.GravityConstant / _maxISP * (float)GetHeatExchangerThrustDivisor());
                 float calculatedMaxThrust = expectedMaxThrust;
@@ -1027,9 +1033,9 @@ namespace FNPlugin
             
                 var thrustAtmosphereRatio = expectedMaxThrust <= 0 ? 0 : Math.Max(0, expectedMaxThrust - pressureTreshold) / expectedMaxThrust;
 
-                current_isp = _maxISP * (float)thrustAtmosphereRatio;
+                current_isp = _maxISP * thrustAtmosphereRatio;
                 calculatedMaxThrust -= pressureTreshold;
-                calculatedMaxThrust *= (float)_thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
+                calculatedMaxThrust *= _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
 
                 FloatCurve newISP = new FloatCurve();
                 var effectiveIsp = isJet ? Mathf.Min(current_isp, PluginHelper.MaxThermalNozzleIsp) : current_isp;
@@ -1038,12 +1044,12 @@ namespace FNPlugin
 
                 if (myAttachedEngine.useVelCurve)
                 {
-                    double vcurve_at_current_velocity = myAttachedEngine.velCurve.Evaluate((float)vessel.srf_velocity.magnitude);
+                    float vcurve_at_current_velocity = myAttachedEngine.velCurve.Evaluate((float)vessel.srf_velocity.magnitude);
 
-                    if (vcurve_at_current_velocity > 0 && !double.IsInfinity(vcurve_at_current_velocity) && !double.IsNaN(vcurve_at_current_velocity))
+                    if (vcurve_at_current_velocity > 0 && !float.IsInfinity(vcurve_at_current_velocity) && !float.IsNaN(vcurve_at_current_velocity))
                     {
-                        max_fuel_flow_rate = (float)(max_fuel_flow_rate / vcurve_at_current_velocity);
-                        calculatedMaxThrust = calculatedMaxThrust / (float)vcurve_at_current_velocity;
+                        max_fuel_flow_rate = max_fuel_flow_rate / vcurve_at_current_velocity;
+                        calculatedMaxThrust = calculatedMaxThrust / vcurve_at_current_velocity;
                     }
                 }
                 myAttachedEngine.maxThrust = calculatedMaxThrust > 0 ? calculatedMaxThrust : 0;
@@ -1102,7 +1108,7 @@ namespace FNPlugin
             consumeFNResource(consumedWasteHeat * TimeWarp.fixedDeltaTime, FNResourceManager.FNRESOURCE_WASTEHEAT);
             
             // calculate max thrust
-            heatExchangerThrustDivisor = (float)GetHeatExchangerThrustDivisor();
+            heatExchangerThrustDivisor = GetHeatExchangerThrustDivisor();
             radiusModifier = (heatExchangerThrustDivisor * 100).ToString("0.00") + "%";
             engineMaxThrust = 0.01f;
             float calculatedMaxThrust = 0;
@@ -1129,9 +1135,9 @@ namespace FNPlugin
 
                 max_thrust_in_current_atmosphere = Mathf.Max(max_thrust_in_space - pressureTreshold, Mathf.Max(myAttachedEngine.currentThrottle * 0.01f, 0.0001f));
 
-                var thrustAtmosphereRatio = max_thrust_in_space > 0 ? Math.Max(max_thrust_in_current_atmosphere / max_thrust_in_space, 0.01 ) : 0.01;
+                var thrustAtmosphereRatio = max_thrust_in_space > 0 ? Mathf.Max(max_thrust_in_current_atmosphere / max_thrust_in_space, 0.01f ) : 0.01f;
                 UpdateIspEngineParams(thrustAtmosphereRatio);
-                current_isp = _maxISP * (float)thrustAtmosphereRatio;
+                current_isp = _maxISP * thrustAtmosphereRatio;
                 calculatedMaxThrust -= pressureTreshold;
             }
             else
@@ -1140,7 +1146,7 @@ namespace FNPlugin
             if (!Single.IsInfinity(max_thrust_in_current_atmosphere) && !Single.IsNaN(max_thrust_in_current_atmosphere))
             {
                 final_max_engine_thrust = max_thrust_in_current_atmosphere * _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
-                calculatedMaxThrust *= (float)_thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
+                calculatedMaxThrust *= _thrustPropellantMultiplier * (1f - sootAccumulationPercentage / sootThrustDivider);
             }
             else
             {
@@ -1160,8 +1166,8 @@ namespace FNPlugin
 
                 if (vcurveAtCurrentVelocity > 0 && !double.IsInfinity(vcurveAtCurrentVelocity) && !double.IsNaN(vcurveAtCurrentVelocity))
                 {
-                    max_fuel_flow_rate = (float)(max_fuel_flow_rate * vcurveAtCurrentVelocity);
-                    calculatedMaxThrust *= (float)vcurveAtCurrentVelocity;
+                    max_fuel_flow_rate = max_fuel_flow_rate * vcurveAtCurrentVelocity;
+                    calculatedMaxThrust *= vcurveAtCurrentVelocity;
                 }
                 else
                 {
@@ -1182,12 +1188,12 @@ namespace FNPlugin
 
             if (myAttachedEngine is ModuleEnginesFX && !String.IsNullOrEmpty(_particleFXName))
             {
-                part.Effect(_particleFXName, Mathf.Max(0.1f * myAttachedEngine.currentThrottle,  Mathf.Min((float)Math.Pow(thermal_power_received / requested_thermal_power, 0.5), delayedThrottle)));
+                part.Effect(_particleFXName, Mathf.Max(0.1f * myAttachedEngine.currentThrottle,  Mathf.Min(Mathf.Pow(thermal_power_received / requested_thermal_power, 0.5f), delayedThrottle)));
             }
 
             if (_fuelToxicity > 0 && max_fuel_flow_rate > 0 && nozzleStaticPresure > 1)
             {
-                _savedReputationCost += (float)(max_fuel_flow_rate * _fuelToxicity * TimeWarp.fixedDeltaTime * Math.Pow(nozzleStaticPresure / 100, 3));
+                _savedReputationCost += max_fuel_flow_rate * _fuelToxicity * TimeWarp.fixedDeltaTime * Mathf.Pow(nozzleStaticPresure / 100, 3);
                 if (_savedReputationCost > 1)
                 {
                     float flooredReputationCost = (int)Math.Floor(_savedReputationCost);
@@ -1257,7 +1263,6 @@ namespace FNPlugin
                 {
                     ScreenMessages.PostScreenMessage("Engine Shutdown: Catastrophic overheating was imminent!", 5.0f, ScreenMessageStyle.UPPER_CENTER);
                     myAttachedEngine.Shutdown();
-                    //part.temperature = 1;
                 }
                 else
                     part.temperature = temp;
@@ -1270,9 +1275,6 @@ namespace FNPlugin
                     _heatDecompositionFraction = 1;
 
                 _maxISP = (float)(Math.Sqrt((double)AttachedReactor.CoreTemperature) * (PluginHelper.IspCoreTempMult + IspTempMultOffset) * GetIspPropellantModifier());
-
-                //thermalRatio = (float)getResourceBarRatio(FNResourceManager.FNRESOURCE_THERMALPOWER);
-                //_assThermalPower = MyAttachedReactor.MaximumPower * thermalRatio * delayedThrottle;
             }
         }
 
@@ -1303,9 +1305,9 @@ namespace FNPlugin
 		// Amount of intake air available to use of a particular resource type
 		public static double getIntakeAvailable(Vessel vess, string resourcename) 
         {
-            List<INoozle> nozzles = vess.FindPartModulesImplementing<INoozle>();
+            List<IEngineNoozle> nozzles = vess.FindPartModulesImplementing<IEngineNoozle>();
             bool updating = true;
-            foreach (INoozle nozzle in nozzles)
+            foreach (IEngineNoozle nozzle in nozzles)
             {
                 if (!nozzle.Static_updating)
                 {
@@ -1338,9 +1340,9 @@ namespace FNPlugin
 		// enumeration of the fuel useage rates of all jets on a vessel
 		public static int getEnginesRunningOfTypeForVessel (Vessel vess, string resourcename) 
         {
-            List<INoozle> nozzles = vess.FindPartModulesImplementing<INoozle>();
+            List<IEngineNoozle> nozzles = vess.FindPartModulesImplementing<IEngineNoozle>();
 			int engines = 0;
-            foreach (INoozle nozzle in nozzles) 
+            foreach (IEngineNoozle nozzle in nozzles) 
             {
 				ConfigNode[] prop_node = nozzle.getPropellants ();
 
@@ -1358,7 +1360,7 @@ namespace FNPlugin
         {
 			int engines = 0;
 			bool updating = true;
-            foreach (INoozle nozzle in _vesselThermalNozzles) 
+            foreach (IEngineNoozle nozzle in _vesselThermalNozzles) 
             {
 				ConfigNode[] prop_node = nozzle.getPropellants ();
 
@@ -1378,7 +1380,7 @@ namespace FNPlugin
 			if (updating) 
             {
 				double enum_rate = 0;
-                foreach (INoozle nozzle in _vesselThermalNozzles) 
+                foreach (IEngineNoozle nozzle in _vesselThermalNozzles) 
                 {
 					ConfigNode[] prop_node = nozzle.getPropellants ();
 

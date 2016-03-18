@@ -46,11 +46,9 @@ namespace FNPlugin
         { 
             get 
             {
-                float lithiumModifier = lithiumPartResource != null ? (float)Math.Sqrt(lithiumPartResource.amount / lithiumPartResource.maxAmount) : 1;
-
                 float plasmaModifier = (plasma_ratio >= 1.0 ? 1 : 0);
 
-                return base.MaximumThermalPower * lithiumModifier * Math.Max(lithiumModifier * plasmaModifier, 0.000000001f); 
+                return Math.Max(base.MaximumThermalPower * plasmaModifier, 0.000000001f); 
             } 
         }
 

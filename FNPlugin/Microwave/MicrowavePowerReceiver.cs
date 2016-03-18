@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using UnityEngine;
+using FNPlugin.Propulsion;
 
 namespace FNPlugin
 {
@@ -86,6 +87,8 @@ namespace FNPlugin
         protected double currentIsThermalEnergyGenratorActive;
 
         public Part Part { get { return this.part; } }
+
+        public void ConnectWithEngine(IEngineNoozle engine) {}
 
         public int SupportedPropellantAtoms { get { return GameConstants.defaultSupportedPropellantAtoms; } }
 

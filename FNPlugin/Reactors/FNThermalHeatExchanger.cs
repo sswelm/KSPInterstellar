@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using UnityEngine;
+using FNPlugin.Propulsion;
 
 namespace FNPlugin  
 {
@@ -102,6 +103,8 @@ namespace FNPlugin
             else
                 return 0;
         }
+
+        public void ConnectWithEngine(IEngineNoozle engine) { }
 
         public double ProducedWasteHeat { get { return 0; } }
 

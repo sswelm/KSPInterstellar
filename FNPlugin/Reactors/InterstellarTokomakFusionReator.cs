@@ -11,9 +11,6 @@ namespace FNPlugin
         public int jumpstartPowerTime = 0;
         public int fusionAlertFrames = 0;
 
-        // properties
-        //public override string TypeName { get { return (isupgraded ? upgradedName != "" ? upgradedName : originalName : originalName) + " Reactor"; } }
-
         public float HeatingPowerRequirements 
 		{ 
 			get { 
@@ -22,6 +19,16 @@ namespace FNPlugin
                     : PowerRequirement * current_fuel_mode.NormalisedPowerRequirements; 
 			} 
 		}
+
+        public override float MaximumThermalPower
+        {
+            get
+            {
+                float lithiumModifier = lithiumPartResource != null ? (float)Math.Sqrt(lithiumPartResource.amount / lithiumPartResource.maxAmount) : 1;
+
+                return Math.Max(base.MaximumThermalPower * lithiumModifier, 0.000000001f);
+            }
+        }
 
         public override void OnUpdate() 
         {

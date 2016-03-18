@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using TweakScale;
+using FNPlugin.Propulsion;
 
 namespace FNPlugin
 {
@@ -102,6 +103,8 @@ namespace FNPlugin
         public bool canBreedTritium = false;
         [KSPField(isPersistant = false)]
         public bool canDisableTritiumBreeding = true;
+        [KSPField(isPersistant = false)]
+        public bool disableAtZeroThrottle = false;
 
         [KSPField(isPersistant = false)]
         public float breedDivider = 100000.0f;
@@ -212,8 +215,7 @@ namespace FNPlugin
 
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Max Power to Supply frame")]
         protected float max_power_to_supply = 0;
-        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Thermal Power Recieved")]
-        protected float thermal_power_received = 0;
+
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Fixed Max Thermal Power")]
         protected float fixed_maximum_thermal_power;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Max Thermal To Supply")]
@@ -231,6 +233,9 @@ namespace FNPlugin
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Power Produced", guiUnits = " MW")]
         public float ongoing_total_power_f;
 
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Thermal Power Recieved")]
+        protected float ongoing_thermal_power_f;
+
         // value types
         protected bool hasrequiredupgrade = false;
         protected double tritium_rate;
@@ -242,7 +247,8 @@ namespace FNPlugin
         protected float helium_produced_f;
         protected long update_count;
         protected long last_draw_update;
-        protected float ongoing_thermal_power_f;
+        protected float thermal_power_received = 0;
+        
         protected float ongoing_charged_power_f;
         protected int nrAvailableUpgradeTechs;
         
@@ -254,6 +260,7 @@ namespace FNPlugin
         protected GUIStyle bold_label;
         protected float previousTimeWarp;
         protected bool? hasBimodelUpgradeTechReq;
+        protected IEngineNoozle connectedEngine;
 
         protected PartResource thermalPowerResource = null;
         protected PartResource chargedPowerResource = null;
@@ -308,6 +315,11 @@ namespace FNPlugin
                 hydrogenAmount *= 2;
 
             return part.RequestResource(hydrogenDefinition.name, -hydrogenAmount);
+        }
+
+        public void ConnectWithEngine(IEngineNoozle engine)
+        {
+            connectedEngine = engine;
         }
 
         public GenerationType CurrentGenerationType { get; private set; }
@@ -944,9 +956,9 @@ namespace FNPlugin
                 {
                     if (current_fuel_mode != null && !current_fuel_mode.ReactorFuels.Any(fuel => GetFuelAvailability(fuel) <= 0))
                     {
-                        if (ongoing_thermal_power_f > 0) 
+                        //if (ongoing_thermal_power_f > 0) 
                             currentTPwr = PluginHelper.getFormattedPowerString(ongoing_thermal_power_f) + "_th";
-                        if (ongoing_charged_power_f > 0) 
+                        //if (ongoing_charged_power_f > 0) 
                             currentCPwr = PluginHelper.getFormattedPowerString(ongoing_charged_power_f) + "_cp";
                         statusStr = "Active (" + powerPcnt.ToString("0.00") + "%)";
                     }
@@ -997,7 +1009,7 @@ namespace FNPlugin
             currentIsChargedEnergyGenratorActive = 0;
 
             decay_ongoing = false;
-            //base.OnFixedUpdate();
+
             if (IsEnabled && MaximumPower > 0)
             {
                 if (ReactorIsOverheating())
@@ -1074,7 +1086,9 @@ namespace FNPlugin
 
                 previousTimeWarp = TimeWarp.fixedDeltaTime;
 
+
                 // Max Power
+                var engineThrottleModifier = disableAtZeroThrottle && connectedEngine != null && connectedEngine.CurrentThrottle == 0 ? 0 : 1;
                 max_power_to_supply = Math.Max(MaximumPower * TimeWarp.fixedDeltaTime, 0);
                 geeForceModifier = maxGeeForceFuelInput > 0 ? (float)Math.Min(Math.Max(maxGeeForceFuelInput > 0 ? 1.1 - (part.vessel.geeForce / maxGeeForceFuelInput) : 0.1, 0.1), 1) : 1;
                 float fuel_ratio = (float)Math.Min(current_fuel_mode.ReactorFuels.Min(fuel => GetFuelRatio(fuel, FuelEfficiency, max_power_to_supply * geeForceModifier)), 1.0);
@@ -1082,13 +1096,14 @@ namespace FNPlugin
 
                 // Charged Power
                 var fixed_maximum_charged_power = MaximumChargedPower * TimeWarp.fixedDeltaTime;
-                double max_charged_to_supply = Math.Max(fixed_maximum_charged_power, 0) * fuel_ratio * geeForceModifier;
+
+                double max_charged_to_supply = Math.Max(fixed_maximum_charged_power, 0) * fuel_ratio * geeForceModifier * engineThrottleModifier;
                 double charged_power_received = supplyManagedFNResourceWithMinimum(max_charged_to_supply, min_throttle, FNResourceManager.FNRESOURCE_CHARGED_PARTICLES);
                 double charged_power_ratio = ChargedPowerRatio > 0 ? charged_power_received / max_charged_to_supply : 0;
 
                 // Thermal Power
                 fixed_maximum_thermal_power = MaximumThermalPower * TimeWarp.fixedDeltaTime;
-                max_thermal_to_supply = Math.Max(fixed_maximum_thermal_power, 0) * fuel_ratio * geeForceModifier;
+                max_thermal_to_supply = Math.Max(fixed_maximum_thermal_power, 0) * fuel_ratio * geeForceModifier * engineThrottleModifier;
                 thermal_power_received = supplyManagedFNResourceWithMinimum(max_thermal_to_supply, min_throttle, FNResourceManager.FNRESOURCE_THERMALPOWER);
                 double thermal_power_ratio = (1 - ChargedPowerRatio) > 0 ? thermal_power_received / max_thermal_to_supply : 0;
 
@@ -1096,8 +1111,8 @@ namespace FNPlugin
                 var thermal_shortage_ratio = charged_power_ratio > thermal_power_ratio ? charged_power_ratio - thermal_power_ratio : 0;
                 var chargedpower_shortagage_ratio = thermal_power_ratio > charged_power_ratio ? thermal_power_ratio - charged_power_ratio : 0;
 
-                thermal_power_received = thermal_power_received + (float)(thermal_shortage_ratio * fixed_maximum_thermal_power * fuel_ratio * geeForceModifier);
-                charged_power_received = charged_power_received + (chargedpower_shortagage_ratio * fixed_maximum_charged_power * fuel_ratio * geeForceModifier);
+                thermal_power_received = thermal_power_received + (float)(thermal_shortage_ratio * fixed_maximum_thermal_power * fuel_ratio * geeForceModifier * engineThrottleModifier);
+                charged_power_received = charged_power_received + (chargedpower_shortagage_ratio * fixed_maximum_charged_power * fuel_ratio * geeForceModifier * engineThrottleModifier);
 
                 // update GUI
                 ongoing_thermal_power_f = (float)(thermal_power_received / TimeWarp.fixedDeltaTime);

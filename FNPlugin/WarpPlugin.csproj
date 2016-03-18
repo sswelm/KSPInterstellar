@@ -89,7 +89,7 @@
     <Compile Include="Extensions\ThermalSourceSearchResult.cs" />
     <Compile Include="Microwave\IElectricPowerSource.cs" />
     <Compile Include="Propulsion\AlcubierreDrive.cs" />
-    <Compile Include="Propulsion\Contract\INoozle.cs" />
+    <Compile Include="Propulsion\Contract\IEngineNoozle.cs" />
     <Compile Include="Propulsion\ExtendedPropellant.cs" />
     <Compile Include="Propulsion\ModuleEnginesWarpVista.cs" />
     <Compile Include="Propulsion\ModuleEnginesWarp.cs" />

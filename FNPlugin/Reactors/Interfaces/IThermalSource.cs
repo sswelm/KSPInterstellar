@@ -1,4 +1,5 @@
 using System;
+using FNPlugin.Propulsion;
 
 namespace FNPlugin
 {
@@ -92,6 +93,8 @@ namespace FNPlugin
         void NotifyActiveChargedEnergyGenrator(double efficency, ElectricGeneratorType generatorType);
 
         bool ShouldApplyBalance(ElectricGeneratorType generatorType);
+
+        void ConnectWithEngine(IEngineNoozle engine);
 	}
 }
 

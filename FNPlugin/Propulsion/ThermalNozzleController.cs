@@ -75,6 +75,15 @@ namespace FNPlugin
         public float skinSkinConductionMult = 1;
 
         [KSPField(isPersistant = false)]
+        public string pulseAnimationName = String.Empty;
+        [KSPField(isPersistant = false)]
+        public string emiAnimationName = String.Empty;
+        [KSPField(isPersistant = false)]
+        public float pulseDuration = 0;
+        [KSPField(isPersistant = false)]
+        public float recoveryAnimationDivider = 1;
+
+        [KSPField(isPersistant = false)]
         public float upgradeCost;
         [KSPField(isPersistant = false)]
         public string originalName;
@@ -219,6 +228,8 @@ namespace FNPlugin
 		protected ModuleEngines myAttachedEngine;
 		protected bool _currentpropellant_is_jet = false;
 
+        protected AnimationState[] pulseAnimationState;
+        protected AnimationState[] emiAnimationState;
         protected ModuleResourceIntake cooledIntake;
 		protected int thrustLimitRatio = 0;
 		protected double old_intake = 0;
@@ -369,6 +380,11 @@ namespace FNPlugin
             part.skinSkinConductionMult = skinSkinConductionMult;
             part.skinThermalMassModifier = skinThermalMassModifier;
             part.skinInternalConductionMult = skinInternalConductionMult;
+
+            if (!String.IsNullOrEmpty(pulseAnimationName))
+                pulseAnimationState = SetUpAnimation(pulseAnimationName, this.part);
+            if (!String.IsNullOrEmpty(emiAnimationName))
+                emiAnimationState = SetUpAnimation(emiAnimationName, this.part);
 
             PartResource wasteheatPowerResource = part.Resources[FNResourceManager.FNRESOURCE_WASTEHEAT];
 
@@ -974,7 +990,7 @@ namespace FNPlugin
                 return;
             }
 
-            delayedThrottle = _currentpropellant_is_jet || myAttachedEngine.currentThrottle < delayedThrottle
+            delayedThrottle = _currentpropellant_is_jet || myAttachedEngine.currentThrottle < delayedThrottle || delayedThrottleFactor <= 0
                 ? myAttachedEngine.currentThrottle
                 : Mathf.MoveTowards(delayedThrottle, myAttachedEngine.currentThrottle, delayedThrottleFactor * TimeWarp.fixedDeltaTime);
 
@@ -1005,6 +1021,8 @@ namespace FNPlugin
             }
             else
                 fuel_gauge.SetLength(2.5f);
+
+            UpdateAnimation();
 
             if (myAttachedEngine.isOperational && myAttachedEngine.currentThrottle > 0)
                 GenerateThrustFromReactorHeat();
@@ -1057,7 +1075,7 @@ namespace FNPlugin
                 // set engines maximum fuel flow
                 myAttachedEngine.maxFuelFlow = Math.Min(1000f, (float)max_fuel_flow_rate);
 
-                if (myAttachedEngine is ModuleEnginesFX && !String.IsNullOrEmpty(_particleFXName))
+                if (pulseDuration == 0 && myAttachedEngine is ModuleEnginesFX && !String.IsNullOrEmpty(_particleFXName))
                 {
                     part.Effect(_particleFXName, 0);
                 }
@@ -1067,6 +1085,42 @@ namespace FNPlugin
 			static_updating = true;
 			static_updating2 = true;
 		}
+
+        private void UpdateAnimation()
+        {
+            float increase;
+
+            if (myAttachedEngine.currentThrottle > 0)
+                increase = TimeWarp.fixedDeltaTime;
+            else if (currentAnimatioRatio > 1 / recoveryAnimationDivider)
+                increase = TimeWarp.fixedDeltaTime;
+            else if (currentAnimatioRatio > 0)
+                increase = TimeWarp.fixedDeltaTime / -recoveryAnimationDivider;
+            else
+                increase = 0;
+
+            currentAnimatioRatio += increase;
+
+            if (pulseDuration > 0 && !String.IsNullOrEmpty(_particleFXName) && myAttachedEngine is ModuleEnginesFX)
+            {
+                if (increase > 0 && myAttachedEngine.currentThrottle > 0 && currentAnimatioRatio < pulseDuration)
+                    part.Effect(_particleFXName, 1);
+                else
+                    part.Effect(_particleFXName, 0);
+            }
+
+            if (pulseDuration > 0 && increase > 0 && myAttachedEngine.currentThrottle > 0 && currentAnimatioRatio < pulseDuration)
+                SetAnimationRatio(1, emiAnimationState);
+            else
+                SetAnimationRatio(0, emiAnimationState);
+
+            if (currentAnimatioRatio > 1 + (2 - (myAttachedEngine.currentThrottle * 2)))
+                currentAnimatioRatio = 0;
+
+            SetAnimationRatio(Math.Max(Math.Min(currentAnimatioRatio, 1), 0), pulseAnimationState);
+        }
+
+        private float currentAnimatioRatio;
 
         private void GenerateThrustFromReactorHeat()
         {
@@ -1186,7 +1240,7 @@ namespace FNPlugin
 			// set engines maximum fuel flow
 	        myAttachedEngine.maxFuelFlow = Math.Min(1000, max_fuel_flow_rate);
 
-            if (myAttachedEngine is ModuleEnginesFX && !String.IsNullOrEmpty(_particleFXName))
+            if (pulseDuration == 0 && myAttachedEngine is ModuleEnginesFX && !String.IsNullOrEmpty(_particleFXName))
             {
                 part.Effect(_particleFXName, Mathf.Max(0.1f * myAttachedEngine.currentThrottle,  Mathf.Min(Mathf.Pow(thermal_power_received / requested_thermal_power, 0.5f), delayedThrottle)));
             }
@@ -1516,7 +1570,7 @@ namespace FNPlugin
             return (normalizer + variable) / (1f + normalizer);
         }
 
-        public static ConfigNode[] getPropellantsHybrid() 
+        private static ConfigNode[] getPropellantsHybrid() 
         {
             ConfigNode[] propellantlist = GameDatabase.Instance.GetConfigNodes("ATMOSPHERIC_NTR_PROPELLANT");
             ConfigNode[] propellantlist2 = GameDatabase.Instance.GetConfigNodes("BASIC_NTR_PROPELLANT");
@@ -1525,6 +1579,31 @@ namespace FNPlugin
                 PluginHelper.showInstallationErrorMessage();
             
             return propellantlist;
+        }
+
+        private static AnimationState[] SetUpAnimation(string animationName, Part part)
+        {
+            var states = new List<AnimationState>();
+            foreach (var animation in part.FindModelAnimators(animationName))
+            {
+                var animationState = animation[animationName];
+                animationState.speed = 0;
+                animationState.enabled = true;
+                animationState.wrapMode = WrapMode.ClampForever;
+                animation.Blend(animationName);
+                states.Add(animationState);
+            }
+            return states.ToArray();
+        }
+
+        private void SetAnimationRatio(float ratio, AnimationState[] animationState)
+        {
+            if (animationState == null) return;
+
+            foreach (AnimationState anim in animationState)
+            {
+                anim.normalizedTime = ratio;
+            }
         }
 	}
 }

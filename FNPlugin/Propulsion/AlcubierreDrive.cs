@@ -88,7 +88,7 @@ namespace FNPlugin
 		[KSPField(isPersistant = true)]
 		public bool isDeactivatingWarpDrive = false;
 
-		private float[] engine_throtle = { 0.01f, 0.016f, 0.025f, 0.04f, 0.063f, 0.1f, 0.16f, 0.25f, 0.40f, 0.63f, 1.0f, 1.6f, 2.5f, 4.0f, 6.3f, 10f, 16f, 25f, 40f, 63f, 100f };
+		private float[] engine_throtle = { 0.01f, 0.016f, 0.025f, 0.04f, 0.063f, 0.1f, 0.16f, 0.25f, 0.40f, 0.63f, 1.0f, 1.6f, 2.5f, 4.0f, 6.3f, 10, 16, 25, 40, 63, 100, 160, 250, 400, 630, 1000 };
 
 		protected int old_selected_factor = 0;
 		protected float tex_count;
@@ -231,7 +231,7 @@ namespace FNPlugin
 
 			float power_returned = consumeFNResource(currentPowerRequirementForWarp * TimeWarp.fixedDeltaTime, FNResourceManager.FNRESOURCE_MEGAJOULES) / TimeWarp.fixedDeltaTime;
 			if (power_returned < 0.99 * currentPowerRequirementForWarp)
-			{
+		{	
 				initiateWarpTimeout--;
 
 				if (initiateWarpTimeout == 1)

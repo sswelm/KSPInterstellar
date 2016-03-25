@@ -22,17 +22,10 @@ namespace FNPlugin
 		public bool engineInit = false;
 		[KSPField(isPersistant = true)]
 		public int fuel_mode = 0;
-        [KSPField(isPersistant = true, guiActive = true, guiName = "Soot Accumulation", guiUnits = " %")]
+        [KSPField(isPersistant = true, guiActive = false, guiName = "Soot Accumulation", guiUnits = " %")]
         public float sootAccumulationPercentage;
-
-        /// <summary>
-        /// hidden setting used by ballance mods
-        /// </summary>
         [KSPField(isPersistant = false)]
         public float wasteHeatMultiplier = 1;
-        /// <summary>
-        /// Determing Jet Engine Performance
-        /// </summary>
         [KSPField(isPersistant = false)]
         public int jetPerformanceProfile = 0;
         [KSPField(isPersistant = false)]
@@ -51,7 +44,7 @@ namespace FNPlugin
         public float sootHeatDivider = 150;
         [KSPField(isPersistant = false)]
         public float sootThrustDivider = 150;
-        [KSPField(isPersistant = false)]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "delayedThrottleFactor")]
         public float delayedThrottleFactor = 0.5f;
 
         [KSPField(isPersistant = false)]
@@ -206,6 +199,8 @@ namespace FNPlugin
         protected float thermal_modifiers;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Available T Power ", guiUnits = " MJ")]
         protected float _availableThermalPower;
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Delayed Throttle")]
+        protected float delayedThrottle = 0;
 
 		//Internal
         protected string _particleFXName;
@@ -952,7 +947,7 @@ namespace FNPlugin
             return ispModifier;
         }
 
-        private float delayedThrottle = 0;
+        
 
         public void FixedUpdate() // FixedUpdate is also called when not activated
         {
@@ -1104,7 +1099,7 @@ namespace FNPlugin
             if (pulseDuration > 0 && !String.IsNullOrEmpty(_particleFXName) && myAttachedEngine is ModuleEnginesFX)
             {
                 if (increase > 0 && myAttachedEngine.currentThrottle > 0 && currentAnimatioRatio < pulseDuration)
-                    part.Effect(_particleFXName, 1);
+                    part.Effect(_particleFXName, 1 - currentAnimatioRatio / pulseDuration);
                 else
                     part.Effect(_particleFXName, 0);
             }

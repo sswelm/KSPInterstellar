@@ -147,8 +147,7 @@ namespace OpenResourceSystem
 			double power_seconds_units = power / TimeWarp.fixedDeltaTime;
 			double power_min_seconds_units = power_seconds_units * rat_min;
 			double managed_supply_val_add = 
-                Math.Min (power_seconds_units, 
-                          Math.Max(getCurrentUnfilledResourceDemand() + getSpareResourceCapacity() / TimeWarp.fixedDeltaTime, power_min_seconds_units));
+                Math.Min (power_seconds_units, Math.Max(getCurrentUnfilledResourceDemand() + getSpareResourceCapacity() / TimeWarp.fixedDeltaTime, power_min_seconds_units));
 			currentPowerSupply += managed_supply_val_add;
 			stable_supply += power_seconds_units;
 

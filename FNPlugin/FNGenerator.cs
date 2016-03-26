@@ -99,7 +99,7 @@ namespace FNPlugin
         protected float coldBathTemp = 500;
         protected float hotBathTemp = 1;
         protected float outputPower;
-        protected double _totalEff;
+        protected float _totalEff;
         protected float sectracker = 0;
         protected bool play_down = true;
         protected bool play_up = true;
@@ -114,6 +114,8 @@ namespace FNPlugin
         protected PartResource megajouleResource;
         protected int startcount = 0;
         protected PowerStates _powerState;
+        protected float powerCustomSettingFraction;
+        protected double powerDownFraction;
 
         public String UpgradeTechnology { get { return upgradeTechReq; } }
 
@@ -348,8 +350,8 @@ namespace FNPlugin
 
                     MaxPowerStr = (_totalEff >= 0)
                         ? !chargedParticleMode
-                            ? getPowerFormatString(maxThermalPower * _totalEff * (powerPercentage / 100)) + "_e"
-                            : getPowerFormatString(maxChargedPower * _totalEff * (powerPercentage / 100)) + "_e"
+                            ? getPowerFormatString(maxThermalPower * _totalEff * powerCustomSettingFraction) + "_e"
+                            : getPowerFormatString(maxChargedPower * _totalEff * powerCustomSettingFraction) + "_e"
                         : (0).ToString() + "MW";
 
                     last_draw_update = update_count;
@@ -401,18 +403,18 @@ namespace FNPlugin
                 : radius * radius / attachedThermalSource.GetRadius() / attachedThermalSource.GetRadius();
         }
 
-        public void updateGeneratorPower()
+        public void UpdateGeneratorPower()
         {
             if (attachedThermalSource == null) return;
 
             var wasteHeateModifier = 1.0f - (float)getResourceBarRatio(FNResourceManager.FNRESOURCE_WASTEHEAT);
             hotBathTemp = attachedThermalSource.HotBathTemperature + wasteHeateModifier * FNRadiator.getAverageMaximumRadiatorTemperatureForVessel(vessel);
-            coldBathTemp = (float)FNRadiator.getAverageRadiatorTemperatureForVessel(vessel);
+            coldBathTemp = FNRadiator.getAverageRadiatorTemperatureForVessel(vessel);
 
             if (HighLogic.LoadedSceneIsEditor)
                 UpdateHeatExchangedThrustDivisor();
 
-            maxThermalPower = attachedThermalSource.MaximumThermalPower * (powerPercentage / 100);
+            maxThermalPower = attachedThermalSource.MaximumThermalPower * powerCustomSettingFraction;
             if (attachedThermalSource.EfficencyConnectedChargedEnergyGenrator == 0)
                 maxThermalPower += attachedThermalSource.MaximumChargedPower;
             maxChargedPower = attachedThermalSource.MaximumChargedPower;
@@ -435,45 +437,16 @@ namespace FNPlugin
         public override void OnFixedUpdate()
         {
             base.OnFixedUpdate();
+            powerCustomSettingFraction = powerPercentage / 100;
+
             if (IsEnabled && attachedThermalSource != null && FNRadiator.hasRadiatorsForVessel(vessel))
             {
-                updateGeneratorPower();
+                UpdateGeneratorPower();
 
                 // check if MaxStableMegaWattPower is changed
                 var maxStableMegaWattPower = MaxStableMegaWattPower;
-                if (maxStableMegaWattPower != _previousMaxStableMegaWattPower)
-                    _powerState = PowerStates.powerChange;
 
-                _previousMaxStableMegaWattPower = maxStableMegaWattPower;
-
-                if (maxStableMegaWattPower > 0 && (TimeWarp.fixedDeltaTime != previousTimeWarp || _powerState != PowerStates.powerOnline))
-                {
-                    _powerState = PowerStates.powerOnline;
-
-                    var powerBufferingBonus = attachedThermalSource.PowerBufferBonus * maxStableMegaWattPower;
-                    requiredMegawattCapacity = (float)Math.Max(0.0001, TimeWarp.fixedDeltaTime * maxStableMegaWattPower + powerBufferingBonus);
-                    var previousMegawattCapacity = Math.Max(0.0001f, previousTimeWarp * maxStableMegaWattPower + powerBufferingBonus);
-
-                    if (megajouleResource != null)
-                    {
-                        megajouleResource.maxAmount = requiredMegawattCapacity;
-
-                        if (maxStableMegaWattPower > 0.1)
-                        {
-                            megajouleResource.amount = requiredMegawattCapacity > previousMegawattCapacity
-                                    ? Math.Max(0, Math.Min(requiredMegawattCapacity, megajouleResource.amount + requiredMegawattCapacity - previousMegawattCapacity))
-                                    : Math.Max(0, Math.Min(requiredMegawattCapacity, (megajouleResource.amount / megajouleResource.maxAmount) * requiredMegawattCapacity));
-                        }
-                    }
-
-                    PartResource electricChargeResource = part.Resources.list.FirstOrDefault(r => r.resourceName == "ElectricCharge");
-                    if (electricChargeResource != null)
-                    {
-                        electricChargeResource.maxAmount = requiredMegawattCapacity;
-                        electricChargeResource.amount = maxStableMegaWattPower <= 0 ? 0 : Math.Min(electricChargeResource.maxAmount, electricChargeResource.amount);
-                    }
-                }
-                previousTimeWarp = TimeWarp.fixedDeltaTime;
+                UpdateMegaWattPowerBuffer(maxStableMegaWattPower);
 
                 // don't produce any power when our reactor has stopped
                 if (maxStableMegaWattPower <= 0)
@@ -484,23 +457,6 @@ namespace FNPlugin
                 else
                     powerDownFraction = 1;
 
-                double electrical_power_currently_needed;
-
-                if (attachedThermalSource.ShouldApplyBalance(chargedParticleMode ? ElectricGeneratorType.charged_particle : ElectricGeneratorType.thermal))
-                {
-                    var chargedPowerPerformance = attachedThermalSource.EfficencyConnectedChargedEnergyGenrator * attachedThermalSource.ChargedPowerRatio;
-                    var thermalPowerPerformance = attachedThermalSource.EfficencyConnectedThermalEnergyGenrator * (1 - attachedThermalSource.ChargedPowerRatio);
-
-                    var totalPerformance = chargedPowerPerformance + thermalPowerPerformance;
-                    var balancePerformanceRatio = (chargedParticleMode ? chargedPowerPerformance / totalPerformance : thermalPowerPerformance / totalPerformance);
-
-                    electrical_power_currently_needed = (getCurrentUnfilledResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) + getSpareResourceCapacity(FNResourceManager.FNRESOURCE_MEGAJOULES)) * balancePerformanceRatio;
-                }
-                else
-                    electrical_power_currently_needed = getCurrentUnfilledResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES)  + getSpareResourceCapacity(FNResourceManager.FNRESOURCE_MEGAJOULES);
-
-
-                double electricdt = 0;
                 double electricdtps = 0;
                 double max_electricdtps = 0;
 
@@ -513,9 +469,9 @@ namespace FNPlugin
 
                     if (_totalEff <= 0 || coldBathTemp <= 0 || hotBathTemp <= 0 || maxThermalPower <= 0) return;
 
-                    double thermal_power_currently_needed = electrical_power_currently_needed / _totalEff; 
+                    double thermal_power_currently_needed = CalculateElectricalPowerCurrentlyNeeded() / _totalEff; 
 
-                    double thermal_power_requested = Math.Max(Math.Min(maxThermalPower, thermal_power_currently_needed) * TimeWarp.fixedDeltaTime, 0.0);
+                    double thermal_power_requested = Math.Max(Math.Min(maxThermalPower, thermal_power_currently_needed) * TimeWarp.fixedDeltaTime, 0);
 
                     requestedPower_f = (float)thermal_power_requested / TimeWarp.fixedDeltaTime;
 
@@ -524,12 +480,12 @@ namespace FNPlugin
                     if (!(attachedThermalSource.EfficencyConnectedChargedEnergyGenrator > 0) && input_power < thermal_power_requested)
                         input_power += consumeFNResource(thermal_power_requested - input_power, FNResourceManager.FNRESOURCE_CHARGED_PARTICLES);
 
-                    double wastedt = input_power * _totalEff;
+                    var effective_input_power = input_power * _totalEff;
 
-                    consumeFNResource(wastedt, FNResourceManager.FNRESOURCE_WASTEHEAT);
-                    electricdt = input_power * _totalEff;
-                    electricdtps = Math.Max(electricdt / TimeWarp.fixedDeltaTime, 0.0);
-                    max_electricdtps = maxThermalPower * _totalEff * (powerPercentage / 100f);
+                    consumeFNResource(effective_input_power, FNResourceManager.FNRESOURCE_WASTEHEAT);
+
+                    electricdtps = Math.Max(effective_input_power / TimeWarp.fixedDeltaTime, 0.0);
+                    max_electricdtps = maxThermalPower * _totalEff * powerCustomSettingFraction;
                 }
                 else // charged particle mode
                 {
@@ -539,7 +495,7 @@ namespace FNPlugin
 
                     if (_totalEff <= 0) return;
 
-                    double charged_power_currently_needed = electrical_power_currently_needed / _totalEff; // _totalEff / ;
+                    double charged_power_currently_needed = CalculateElectricalPowerCurrentlyNeeded() / _totalEff; 
 
                     var charged_power_requested = Math.Max(Math.Min(maxChargedPower, charged_power_currently_needed) * TimeWarp.fixedDeltaTime, 0.0);
 
@@ -547,11 +503,12 @@ namespace FNPlugin
 
                     double input_power = consumeFNResource(charged_power_requested, FNResourceManager.FNRESOURCE_CHARGED_PARTICLES);
 
-                    electricdt = input_power * _totalEff;
-                    electricdtps = Math.Max(electricdt / TimeWarp.fixedDeltaTime, 0.0);
-                    double wastedt = input_power * _totalEff;
-                    max_electricdtps = maxChargedPower * _totalEff * (powerPercentage / 100f);
-                    consumeFNResource(wastedt, FNResourceManager.FNRESOURCE_WASTEHEAT);
+                    var effective_input_power = input_power * _totalEff;
+
+                    consumeFNResource(effective_input_power, FNResourceManager.FNRESOURCE_WASTEHEAT);
+
+                    electricdtps = Math.Max(effective_input_power / TimeWarp.fixedDeltaTime, 0.0);
+                    max_electricdtps = maxChargedPower * _totalEff * powerCustomSettingFraction;
                 }
                 outputPower = -(float)supplyFNResourceFixedMax(electricdtps * TimeWarp.fixedDeltaTime, max_electricdtps * TimeWarp.fixedDeltaTime, FNResourceManager.FNRESOURCE_MEGAJOULES) / TimeWarp.fixedDeltaTime;
             }
@@ -584,7 +541,65 @@ namespace FNPlugin
 
         }
 
-        private double powerDownFraction;
+        private void UpdateMegaWattPowerBuffer(double maxStableMegaWattPower)
+        {
+            if (maxStableMegaWattPower != _previousMaxStableMegaWattPower)
+                _powerState = PowerStates.powerChange;
+
+            _previousMaxStableMegaWattPower = maxStableMegaWattPower;
+
+            if (maxStableMegaWattPower > 0 && (TimeWarp.fixedDeltaTime != previousTimeWarp || _powerState != PowerStates.powerOnline))
+            {
+                _powerState = PowerStates.powerOnline;
+
+                var powerBufferingBonus = attachedThermalSource.PowerBufferBonus * maxStableMegaWattPower;
+                requiredMegawattCapacity = (float)Math.Max(0.0001, TimeWarp.fixedDeltaTime * maxStableMegaWattPower + powerBufferingBonus);
+                var previousMegawattCapacity = Math.Max(0.0001f, previousTimeWarp * maxStableMegaWattPower + powerBufferingBonus);
+
+                if (megajouleResource != null)
+                {
+                    megajouleResource.maxAmount = requiredMegawattCapacity;
+
+                    if (maxStableMegaWattPower > 0.1)
+                    {
+                        megajouleResource.amount = requiredMegawattCapacity > previousMegawattCapacity
+                                ? Math.Max(0, Math.Min(requiredMegawattCapacity, megajouleResource.amount + requiredMegawattCapacity - previousMegawattCapacity))
+                                : Math.Max(0, Math.Min(requiredMegawattCapacity, (megajouleResource.amount / megajouleResource.maxAmount) * requiredMegawattCapacity));
+                    }
+                }
+
+                PartResource electricChargeResource = part.Resources.list.FirstOrDefault(r => r.resourceName == "ElectricCharge");
+                if (electricChargeResource != null)
+                {
+                    electricChargeResource.maxAmount = requiredMegawattCapacity;
+                    electricChargeResource.amount = maxStableMegaWattPower <= 0 ? 0 : Math.Min(electricChargeResource.maxAmount, electricChargeResource.amount);
+                }
+            }
+            previousTimeWarp = TimeWarp.fixedDeltaTime;
+        }
+
+        private double CalculateElectricalPowerCurrentlyNeeded()
+        {
+            double electrical_power_currently_needed;
+
+            if (attachedThermalSource.ShouldApplyBalance(chargedParticleMode ? ElectricGeneratorType.charged_particle : ElectricGeneratorType.thermal))
+            {
+                var chargedPowerPerformance = attachedThermalSource.EfficencyConnectedChargedEnergyGenrator * attachedThermalSource.ChargedPowerRatio;
+                var thermalPowerPerformance = attachedThermalSource.EfficencyConnectedThermalEnergyGenrator * (1 - attachedThermalSource.ChargedPowerRatio);
+
+                var totalPerformance = chargedPowerPerformance + thermalPowerPerformance;
+
+                var balancePerformanceRatio = chargedParticleMode
+                    ? chargedPowerPerformance / totalPerformance
+                    : thermalPowerPerformance / totalPerformance;
+
+                electrical_power_currently_needed = (getCurrentUnfilledResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) + getSpareResourceCapacity(FNResourceManager.FNRESOURCE_MEGAJOULES)) * balancePerformanceRatio;
+            }
+            else
+                electrical_power_currently_needed = getCurrentUnfilledResourceDemand(FNResourceManager.FNRESOURCE_MEGAJOULES) + getSpareResourceCapacity(FNResourceManager.FNRESOURCE_MEGAJOULES);
+
+            return electrical_power_currently_needed;
+        }
 
         private void PowerDown()
         {
@@ -598,14 +613,14 @@ namespace FNPlugin
                 PartResource megajouleResource = part.Resources.list.FirstOrDefault(r => r.resourceName == FNResourceManager.FNRESOURCE_MEGAJOULES);
                 if (megajouleResource != null)
                 {
-                    megajouleResource.maxAmount = Math.Max(0.001, megajouleResource.maxAmount * powerDownFraction);
+                    megajouleResource.maxAmount = Math.Max(0.0001, megajouleResource.maxAmount * powerDownFraction);
                     megajouleResource.amount = Math.Min(megajouleResource.maxAmount, megajouleResource.amount);
                 }
 
                 PartResource electricChargeResource = part.Resources.list.FirstOrDefault(r => r.resourceName == "ElectricCharge");
                 if (electricChargeResource != null)
                 {
-                    electricChargeResource.maxAmount = Math.Max(0.001, electricChargeResource.maxAmount * powerDownFraction);
+                    electricChargeResource.maxAmount = Math.Max(0.0001, electricChargeResource.maxAmount * powerDownFraction);
                     electricChargeResource.amount = Math.Min(electricChargeResource.maxAmount, electricChargeResource.amount);
                 }
             }
@@ -614,14 +629,14 @@ namespace FNPlugin
                 PartResource megajouleResource = part.Resources.list.FirstOrDefault(r => r.resourceName == FNResourceManager.FNRESOURCE_MEGAJOULES);
                 if (megajouleResource != null)
                 {
-                    megajouleResource.maxAmount = 0.001;
+                    megajouleResource.maxAmount = 0.0001;
                     megajouleResource.amount = 0;
                 }
 
                 PartResource electricChargeResource = part.Resources.list.FirstOrDefault(r => r.resourceName == "ElectricCharge");
                 if (electricChargeResource != null)
                 {
-                    electricChargeResource.maxAmount = 0.001;
+                    electricChargeResource.maxAmount = 0.0001;
                     electricChargeResource.amount = 0;
                 }
             }

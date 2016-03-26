@@ -21,7 +21,7 @@ namespace OpenResourceSystem
         protected PartModule my_partmodule;
         protected Dictionary<ORSResourceSuppliable, double> power_draws;
         protected Dictionary<ORSResourceSupplier, double> power_supplies;
-		List<PartResource> partresources;
+		//List<PartResource> partresources;
         protected String resource_name;
         //protected Dictionary<MegajouleSuppliable, float> power_returned;
         protected double currentPowerSupply = 0;
@@ -144,17 +144,18 @@ namespace OpenResourceSystem
 
         public double managedPowerSupplyWithMinimum(ORSResourceSupplier pm, double power, double rat_min) 
         {
-			double power_seconds_units = power / TimeWarp.fixedDeltaTime;
-			double power_min_seconds_units = power_seconds_units * rat_min;
-			double managed_supply_val_add = 
-                Math.Min (power_seconds_units, Math.Max(getCurrentUnfilledResourceDemand() + getSpareResourceCapacity() / TimeWarp.fixedDeltaTime, power_min_seconds_units));
-			currentPowerSupply += managed_supply_val_add;
-			stable_supply += power_seconds_units;
+			var maximum_available_power_per_second = power / TimeWarp.fixedDeltaTime;
+            var minimum_power_per_second = maximum_available_power_per_second * rat_min;
+            var required_power_per_second = Math.Max(GetRequiredResourceDemand(), minimum_power_per_second);
+            var managed_supply_val_add = Math.Min(maximum_available_power_per_second, required_power_per_second);
 
-            if (power_supplies.ContainsKey(pm)) 
-                power_supplies[pm] += (power / TimeWarp.fixedDeltaTime);
-            else 
-                power_supplies.Add(pm, (power / TimeWarp.fixedDeltaTime));
+			currentPowerSupply += managed_supply_val_add;
+			stable_supply += maximum_available_power_per_second;
+
+            if (power_supplies.ContainsKey(pm))
+                power_supplies[pm] += maximum_available_power_per_second;
+            else
+                power_supplies.Add(pm, maximum_available_power_per_second);
 
 			return managed_supply_val_add * TimeWarp.fixedDeltaTime;
 		}
@@ -198,6 +199,11 @@ namespace OpenResourceSystem
         {
 			return (float)(current_resource_demand - currentPowerSupply);
 		}
+
+        public float GetRequiredResourceDemand()
+        {
+            return getCurrentUnfilledResourceDemand() + (float)getSpareResourceCapacity() / TimeWarp.fixedDeltaTime;
+        }
 
         public float GetPowerSupply()
         {

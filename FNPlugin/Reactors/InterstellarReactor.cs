@@ -35,6 +35,8 @@ namespace FNPlugin
         [KSPField(isPersistant = true)]
         public bool reactorInit;
         [KSPField(isPersistant = true)]
+        public bool reactorBooted;
+        [KSPField(isPersistant = true)]
         public bool startDisabled;
         [KSPField(isPersistant = true)]
         public float neutronEmbrittlementDamage;
@@ -716,8 +718,7 @@ namespace FNPlugin
             String[] resources_to_supply = { FNResourceManager.FNRESOURCE_THERMALPOWER, FNResourceManager.FNRESOURCE_WASTEHEAT, FNResourceManager.FNRESOURCE_CHARGED_PARTICLES };
             this.resources_to_supply = resources_to_supply;
 
-            var rnd = new System.Random();
-            windowID = rnd.Next(int.MaxValue);
+            windowID = new System.Random(part.GetInstanceID()).Next(int.MaxValue);
             base.OnStart(state);
 
             // check if we need to upgrade
@@ -751,10 +752,6 @@ namespace FNPlugin
 
             if (!reactorInit)
             {
-                IsEnabled = true;
-                reactorInit = true;
-                breedtritium = true;
-
                 if (startDisabled)
                 {
                     last_active_time = (float)(Planetarium.GetUniversalTime() - 4.0 * GameConstants.EARH_DAY_SECONDS);
@@ -762,6 +759,12 @@ namespace FNPlugin
                     startDisabled = false;
                     breedtritium = false;
                 }
+                else
+                {
+                    IsEnabled = true;
+                    breedtritium = true;
+                }
+                reactorInit = true;
             }
 
             print("[KSP Interstellar] Reactor Persistent Resource Update");
@@ -988,19 +991,23 @@ namespace FNPlugin
                     return;
                 }
 
-                UpdateThermalCapacity();
-
                 // Max Power
                 var engineThrottleModifier = disableAtZeroThrottle && connectedEngine != null && connectedEngine.CurrentThrottle == 0 ? 0 : 1;
                 max_power_to_supply = Math.Max(MaximumPower * TimeWarp.fixedDeltaTime, 0);
-                geeForceModifier = maxGeeForceFuelInput > 0 ? (float)Math.Min(Math.Max(maxGeeForceFuelInput > 0 ? 1.1 - (part.vessel.geeForce / maxGeeForceFuelInput) : 0.1, 0.1), 1) : 1;
-                float fuel_ratio = (float)Math.Min(current_fuel_mode.ReactorFuels.Min(fuel => GetFuelRatio(fuel, FuelEfficiency, max_power_to_supply * geeForceModifier)), 1.0);
+
+                geeForceModifier = maxGeeForceFuelInput > 0 
+                    ? (float)Math.Min(Math.Max(maxGeeForceFuelInput > 0 ? 1.1 - (part.vessel.geeForce / maxGeeForceFuelInput) : 0.1, 0.1), 1) 
+                    : 1;
+
+                float fuel_ratio = (float)Math.Min(current_fuel_mode.ReactorFuels.Min(fuel => GetFuelRatio(fuel, FuelEfficiency, max_power_to_supply * geeForceModifier)), 1);
+
+                UpdateThermalCapacity(fuel_ratio);
+                
                 min_throttle = fuel_ratio > 0 ? minimumThrottle / fuel_ratio : 1;
                 var effective_minimum_throtle = (controlledByEngineThrottle && connectedEngine != null) ? Math.Max(connectedEngine.CurrentThrottle, min_throttle) : min_throttle;
 
                 // Charged Power
                 var fixed_maximum_charged_power = MaximumChargedPower * TimeWarp.fixedDeltaTime;
-
                 double max_charged_to_supply = Math.Max(fixed_maximum_charged_power, 0) * fuel_ratio * geeForceModifier * engineThrottleModifier;
                 double charged_power_received = supplyManagedFNResourceWithMinimum(max_charged_to_supply, effective_minimum_throtle, FNResourceManager.FNRESOURCE_CHARGED_PARTICLES);
                 double charged_power_ratio = ChargedPowerRatio > 0 ? charged_power_received / max_charged_to_supply : 0;
@@ -1030,6 +1037,7 @@ namespace FNPlugin
 
                 total_power_per_frame = total_power_received;
                 double total_power_ratio = total_power_received / MaximumPower / TimeWarp.fixedDeltaTime;
+                powerPcnt = 100.0 * total_power_ratio;
                 ongoing_consumption_rate = (float)total_power_ratio;
 
                 // consume fuel
@@ -1053,11 +1061,6 @@ namespace FNPlugin
 
                 // Waste Heat
                 supplyFNResource(total_power_received, FNResourceManager.FNRESOURCE_WASTEHEAT); // generate heat that must be dissipated
-
-                powerPcnt = 100.0 * total_power_ratio;
-
-                //if (min_throttle > 1.05) 
-                //    IsEnabled = false;
 
                 BreedTritium(total_power_received, TimeWarp.fixedDeltaTime);
 
@@ -1095,7 +1098,7 @@ namespace FNPlugin
 
         }
 
-        private void UpdateThermalCapacity()
+        private void UpdateThermalCapacity(float fuel_ratio)
         {
             // calculate thermalpower capacity
             if (TimeWarp.fixedDeltaTime != previousTimeWarp)
@@ -1106,9 +1109,20 @@ namespace FNPlugin
                     var previousThermalCapacity = Math.Max(0.0001, 10 * previousTimeWarp * MaximumThermalPower);
 
                     thermalPowerResource.maxAmount = requiredThermalCapacity;
-                    thermalPowerResource.amount = requiredThermalCapacity > previousThermalCapacity
-                        ? Math.Max(0, Math.Min(requiredThermalCapacity, thermalPowerResource.amount + requiredThermalCapacity - previousThermalCapacity))
-                        : Math.Max(0, Math.Min(requiredThermalCapacity, (thermalPowerResource.amount / thermalPowerResource.maxAmount) * requiredThermalCapacity));
+
+                    if (reactorBooted)
+                    {
+                        // adjust to
+                        thermalPowerResource.amount = requiredThermalCapacity > previousThermalCapacity
+                                ? Math.Max(0, Math.Min(requiredThermalCapacity, thermalPowerResource.amount + requiredThermalCapacity - previousThermalCapacity))
+                                : Math.Max(0, Math.Min(requiredThermalCapacity, (thermalPowerResource.amount / thermalPowerResource.maxAmount) * requiredThermalCapacity));
+                    }
+                    else
+                    {
+                        // to prevent starting up with wasteheat, boot with full power at bootup
+                        thermalPowerResource.amount = thermalPowerResource.maxAmount * fuel_ratio;
+                        reactorBooted = true;
+                    }
                 }
 
                 if (chargedPowerResource != null)

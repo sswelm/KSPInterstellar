@@ -61,6 +61,9 @@ namespace FNPlugin
         [KSPField(isPersistant = false, guiActive = false)]
         public string surfaceAreaUpgradeTechReq = null;
 
+        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Color Ratio")]
+        public float colorRatio;
+
         // non persistant
         [KSPField(isPersistant = false, guiActiveEditor = false, guiName = "Mass", guiUnits = " t")]
         public float partMass;
@@ -738,11 +741,11 @@ namespace FNPlugin
         {
             float currentTemperature = getRadiatorTemperature();
 
-            float partTempRatio = Mathf.Min((float)(part.temperature / part.maxTemp), 1);
+            float partTempRatio = Mathf.Min((float)(part.temperature / 2700), 1);
 
             float radiatorTempRatio = Mathf.Min(currentTemperature / RadiatorTemperature * 1.05f, 1);
 
-            float colorRatio = Mathf.Pow(Math.Max(partTempRatio, radiatorTempRatio), emissiveColorPower);
+            colorRatio = Mathf.Pow(Math.Max(partTempRatio, radiatorTempRatio), emissiveColorPower);
 
             SetHeatAnimationRatio(colorRatio);
 
@@ -778,6 +781,9 @@ namespace FNPlugin
                     if (renderer.material.GetTexture("_BumpMap") == null)
                         renderer.material.SetTexture("_BumpMap", GameDatabase.Instance.GetTexture("WarpPlugin/Parts/Electrical/LargeFlatRadiator/radtex_n", false));
                 }
+
+                if (heatStates != null)
+                    return;
 
                 if (string.IsNullOrEmpty(colorHeat))
                     return;

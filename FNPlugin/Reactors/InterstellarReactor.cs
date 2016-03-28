@@ -163,10 +163,15 @@ namespace FNPlugin
         public float thermalEnergyEfficiency = 1;
         [KSPField(isPersistant = false)]
         public float chargedParticleEnergyEfficiency = 1;
+
         [KSPField(isPersistant = false)]
-        public float maxGeeForceFuelInput = 0;
+        public bool hasBuoyancyEffects = false;
         [KSPField(isPersistant = false)]
-        public float minGeeForceModifier = 0.1f;
+        public float geeForceMultiplier = 2;
+        [KSPField(isPersistant = false)]
+        public float geeForceTreshHold = 1.5f;
+        [KSPField(isPersistant = false)]
+        public float minGeeForceModifier = 0.01f;
         [KSPField(isPersistant = false)]
         public float neutronEmbrittlementLifepointsMax = 100;
         [KSPField(isPersistant = false)]
@@ -246,7 +251,7 @@ namespace FNPlugin
         protected int deactivate_timer = 0;
         protected List<ReactorFuelMode> fuel_modes;
         protected ReactorFuelMode current_fuel_mode;
-        protected double powerPcnt;
+        protected float powerPcnt;
         protected double tritium_produced_d;
         protected float helium_produced_f;
         protected long update_count;
@@ -995,9 +1000,7 @@ namespace FNPlugin
                 var engineThrottleModifier = disableAtZeroThrottle && connectedEngine != null && connectedEngine.CurrentThrottle == 0 ? 0 : 1;
                 max_power_to_supply = Math.Max(MaximumPower * TimeWarp.fixedDeltaTime, 0);
 
-                geeForceModifier = maxGeeForceFuelInput > 0 
-                    ? (float)Math.Min(Math.Max(maxGeeForceFuelInput > 0 ? 1.1 - (part.vessel.geeForce / maxGeeForceFuelInput) : 0.1, 0.1), 1) 
-                    : 1;
+                geeForceModifier = hasBuoyancyEffects ? (float)Math.Min(Math.Max(1 - ((part.vessel.geeForce - geeForceTreshHold) * geeForceMultiplier), minGeeForceModifier), 1) : 1;
 
                 float fuel_ratio = (float)Math.Min(current_fuel_mode.ReactorFuels.Min(fuel => GetFuelRatio(fuel, FuelEfficiency, max_power_to_supply * geeForceModifier)), 1);
 
@@ -1030,15 +1033,13 @@ namespace FNPlugin
                 ongoing_charged_power_f = (float)(charged_power_received / TimeWarp.fixedDeltaTime);
 
                 // Total
-                double total_power_received = thermal_power_received + charged_power_received;
-
-                neutronEmbrittlementDamage += (float)(total_power_received * current_fuel_mode.NeutronsRatio / neutronEmbrittlementDivider);
-                ongoing_total_power_f = (float)total_power_received / TimeWarp.fixedDeltaTime;
+                float total_power_received = thermal_power_received + (float)charged_power_received;
+                neutronEmbrittlementDamage += total_power_received * current_fuel_mode.NeutronsRatio / neutronEmbrittlementDivider;
+                ongoing_total_power_f = total_power_received / TimeWarp.fixedDeltaTime;
 
                 total_power_per_frame = total_power_received;
-                double total_power_ratio = total_power_received / MaximumPower / TimeWarp.fixedDeltaTime;
-                powerPcnt = 100.0 * total_power_ratio;
-                ongoing_consumption_rate = (float)total_power_ratio;
+                ongoing_consumption_rate = total_power_received / MaximumPower / TimeWarp.fixedDeltaTime;
+                powerPcnt = 100 * ongoing_consumption_rate;
 
                 // consume fuel
                 foreach (ReactorFuel fuel in current_fuel_mode.ReactorFuels)
@@ -1071,11 +1072,10 @@ namespace FNPlugin
             {
                 double power_fraction = 0.1 * Math.Exp(-(Planetarium.GetUniversalTime() - last_active_time) / GameConstants.EARH_DAY_SECONDS / 24.0 * 9.0);
                 double power_to_supply = Math.Max(MaximumPower * TimeWarp.fixedDeltaTime * power_fraction, 0);
-                double thermal_power_received = supplyManagedFNResourceWithMinimum(power_to_supply, 1.0, FNResourceManager.FNRESOURCE_THERMALPOWER);
-                double total_power_ratio = thermal_power_received / MaximumPower / TimeWarp.fixedDeltaTime;
-                ongoing_consumption_rate = (float)total_power_ratio;
+                float thermal_power_received = (float)supplyManagedFNResourceWithMinimum(power_to_supply, 1, FNResourceManager.FNRESOURCE_THERMALPOWER);
+                ongoing_consumption_rate = thermal_power_received / MaximumPower / TimeWarp.fixedDeltaTime;
                 supplyFNResource(thermal_power_received, FNResourceManager.FNRESOURCE_WASTEHEAT); // generate heat that must be dissipated
-                powerPcnt = 100.0 * total_power_ratio;
+                powerPcnt = 100 * ongoing_consumption_rate;
                 decay_ongoing = true;
             }
             else

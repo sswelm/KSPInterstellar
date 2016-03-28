@@ -22,7 +22,7 @@ namespace FNPlugin
         protected float _normpowerrequirements;
         protected float _charged_power_ratio;
         protected double _mev_per_charged_product;
-        protected double _neutrons_ratio;
+        protected float _neutrons_ratio;
         protected double _fuel_efficency_multiplier;
         protected bool _requires_lab;
         protected bool _requires_upgrade;
@@ -41,7 +41,7 @@ namespace FNPlugin
             _charged_power_ratio = node.HasValue("ChargedParticleRatio") ? Single.Parse(node.GetValue("ChargedParticleRatio")) : 0;
 
             _mev_per_charged_product = node.HasValue("MeVPerChargedProduct") ? Double.Parse(node.GetValue("MeVPerChargedProduct")) : 0;
-            _neutrons_ratio = node.HasValue("NeutronsRatio") ? Double.Parse(node.GetValue("NeutronsRatio")) : 1;
+            _neutrons_ratio = node.HasValue("NeutronsRatio") ? Single.Parse(node.GetValue("NeutronsRatio")) : 1;
             _fuel_efficency_multiplier = node.HasValue("FuelEfficiencyMultiplier") ? Double.Parse(node.GetValue("FuelEfficiencyMultiplier")) : 1;
 
             _requires_lab = node.HasValue("RequiresLab") ? Boolean.Parse(node.GetValue("RequiresLab")) : false;
@@ -81,7 +81,7 @@ namespace FNPlugin
 
         public int TechLevel { get { return _techLevel; } }
 
-        public double NeutronsRatio { get { return _neutrons_ratio; } }
+        public float NeutronsRatio { get { return _neutrons_ratio; } }
 
         public double FuelEfficencyMultiplier { get { return _fuel_efficency_multiplier; } }
     }

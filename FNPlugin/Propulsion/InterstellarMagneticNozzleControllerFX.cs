@@ -10,7 +10,7 @@ namespace FNPlugin
 	class InterstellarMagneticNozzleControllerFX : FNResourceSuppliableModule
     {
 		//Persistent False
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiUnits = "m")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiUnits = "m")]
 		public float radius;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiUnits = " t")]
         public float partMass;
@@ -26,13 +26,13 @@ namespace FNPlugin
         private float _max_charged_particles_power;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Requested Particles", guiUnits = " MW")]
         private float _charged_particles_requested;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Recieved Particles", guiUnits = " MW")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Recieved Particles", guiUnits = " MW")]
         private float _charged_particles_received;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Requested Electricity", guiUnits = " MW")]
         private float _requestedElectricPower;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Recieved Electricity", guiUnits = " MW")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Recieved Electricity", guiUnits = " MW")]
         private float _recievedElectricPower;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Max Thrust", guiUnits = " kN")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Max Thrust", guiUnits = " kN")]
         private float _engineMaxThrust;
         [KSPField(isPersistant = false, guiActive = true, guiName = "Free")]
         private double _hydrogenProduction;

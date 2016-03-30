@@ -23,6 +23,7 @@ namespace FNPlugin.Extensions
             // Transpose deltaVV Y and Z to match orbit frame
             Vector3d deltaVV_orbit = deltaVV.xzy;
             Vector3d position = orbit.getRelativePositionAtUT(universalTime);
+
             Orbit orbit2 = orbit.Clone();
             orbit2.UpdateFromStateVectors(position, orbit.getOrbitalVelocityAtUT(universalTime) + deltaVV_orbit, orbit.referenceBody, universalTime);
             if (!double.IsNaN(orbit2.inclination) && !double.IsNaN(orbit2.eccentricity) && !double.IsNaN(orbit2.semiMajorAxis) && orbit2.timeToAp > deltaTime)

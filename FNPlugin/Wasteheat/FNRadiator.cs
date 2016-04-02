@@ -30,11 +30,11 @@ namespace FNPlugin
         [KSPField(isPersistant = false)]
         public float radiatorTemperatureMk1 = 970;
         [KSPField(isPersistant = false)]
-        public float radiatorTemperatureMk2 = 1250;
+        public float radiatorTemperatureMk2 = 1340;
         [KSPField(isPersistant = false)]
-        public float radiatorTemperatureMk3 = 1600;
+        public float radiatorTemperatureMk3 = 1840;
         [KSPField(isPersistant = false)]
-        public float radiatorTemperatureMk4 = 2500;
+        public float radiatorTemperatureMk4 = 2540;
         [KSPField(isPersistant = false)]
         public float radiatorTemperatureMk5 = 3500;
 

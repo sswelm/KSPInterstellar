@@ -175,7 +175,7 @@ namespace FNPlugin
         [KSPField(isPersistant = false)]
         public float neutronEmbrittlementLifepointsMax = 100;
         [KSPField(isPersistant = false)]
-        public float neutronEmbrittlementDivider = 1e+9f;
+        public float neutronEmbrittlementDivider = 2e+9f;
         [KSPField(isPersistant = false)]
         public float hotBathModifier = 1;
         [KSPField(isPersistant = false)]

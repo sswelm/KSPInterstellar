@@ -900,7 +900,7 @@ namespace FNPlugin
         public void EstimateEditorPerformance()
         {
             FloatCurve atmospherecurve = new FloatCurve();
-            UpdateRadiusModifier();
+            //UpdateRadiusModifier();
 
             if (AttachedReactor != null)
             {
@@ -954,7 +954,7 @@ namespace FNPlugin
             return ispModifier;
         }
 
-        
+
 
         public void FixedUpdate() // FixedUpdate is also called when not activated
         {
@@ -968,11 +968,12 @@ namespace FNPlugin
             else
             {
                 _myAttachedReactor.DetachThermalReciever(id);
+
                 ConfigEffects();
             }
         }
 
-        public override void OnFixedUpdate() // OnFixedUpdate does not seem to be called in edit mode
+        public override void OnFixedUpdate() // OnFixedUpdate is not called in edit mode
         {
             ConfigEffects();
 
@@ -1564,11 +1565,16 @@ namespace FNPlugin
         }
 
 
+        private float storedFractionThermalReciever;
         private float GetHeatExchangerThrustDivisor()
         {
-            if (AttachedReactor == null || AttachedReactor.GetRadius() == 0 || radius == 0 || _myAttachedReactor.GetFractionThermalReciever(id) == 0) return 0;
+            if (AttachedReactor == null || AttachedReactor.GetRadius() == 0 || radius == 0 ) return 0;
 
-            var fractionalReactorRadius = Mathf.Sqrt(Mathf.Pow(AttachedReactor.GetRadius(), 2) * _myAttachedReactor.GetFractionThermalReciever(id));
+            if (_myAttachedReactor.GetFractionThermalReciever(id) == 0) return storedFractionThermalReciever;
+
+            storedFractionThermalReciever = _myAttachedReactor.GetFractionThermalReciever(id);
+
+            var fractionalReactorRadius = Mathf.Sqrt(Mathf.Pow(AttachedReactor.GetRadius(), 2) * storedFractionThermalReciever);
 
             // scale down thrust if it's attached to the wrong sized reactor
             float heat_exchanger_thrust_divisor = radius > fractionalReactorRadius

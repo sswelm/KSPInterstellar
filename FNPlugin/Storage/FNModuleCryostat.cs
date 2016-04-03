@@ -88,11 +88,30 @@ namespace FNPlugin
             Events["Activate"].guiName = StartActionName;
             Events["Deactivate"].guiName = StopActionName;
            
-            this.part.force_activate();
+            //this.part.force_activate();
+            this.enabled = true;
+
+            if (Planetarium.GetUniversalTime() != 0)
+                last_active_time = Planetarium.GetUniversalTime();
         }
+
+        double last_active_time;
 
         public override void OnUpdate() 
         {
+            if (Planetarium.GetUniversalTime() != 0)
+            {
+                var current_time = Planetarium.GetUniversalTime();
+                var fixedDeltaTime = current_time - last_active_time;
+
+                if (fixedDeltaTime == 0)
+                    return;
+
+                Update(fixedDeltaTime);
+                last_active_time = current_time;
+            }
+
+
             if (part.Resources.Contains(resourceName))
                 cryostat_resource = part.Resources[resourceName];
             else
@@ -143,7 +162,7 @@ namespace FNPlugin
             }
         }
 
-        public override void OnFixedUpdate()
+        public void Update(double fixedDeltaTime)
         {
             if (cryostat_resource == null || cryostat_resource.amount <= 0.0)
             {
@@ -153,14 +172,14 @@ namespace FNPlugin
 
             if (!isDisabled && currentPowerReq > 0)
             {
-                var fixedPowerReqKW = (float)(currentPowerReq * TimeWarp.fixedDeltaTime);
+                var fixedPowerReqKW = (float)(currentPowerReq * fixedDeltaTime);
 
                 float fixedRecievedChargeKW = consumeFNResource(fixedPowerReqKW / 1000.0f, FNResourceManager.FNRESOURCE_MEGAJOULES) * 1000.0f;
 
                 if (powerReqKW < 1000 && fixedRecievedChargeKW <= fixedPowerReqKW)
                     fixedRecievedChargeKW += part.RequestResource("ElectricCharge", fixedPowerReqKW - fixedRecievedChargeKW);
 
-                recievedPowerKW = fixedRecievedChargeKW / TimeWarp.fixedDeltaTime;
+                recievedPowerKW = (float)(fixedRecievedChargeKW / fixedDeltaTime);
             }
             else
                 recievedPowerKW = 0;
@@ -174,7 +193,7 @@ namespace FNPlugin
 
             if (boiloff > 0.000001)
             {
-                cryostat_resource.amount = Math.Max(0, cryostat_resource.amount - boiloff * TimeWarp.fixedDeltaTime);
+                cryostat_resource.amount = Math.Max(0, cryostat_resource.amount - boiloff * fixedDeltaTime);
                 boiloffStr = boiloff.ToString("0.000000") + " L/s " + cryostat_resource.resourceName;
             }
             else

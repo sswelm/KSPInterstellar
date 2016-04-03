@@ -93,9 +93,11 @@ namespace FNPlugin
 		public string radiatorType;
 		[KSPField(isPersistant = false, guiActive = true, guiName = "Rad Temp")]
 		public string radiatorTempStr;
+        [KSPField(isPersistant = false, guiActive = true, guiName = "Part Temp")]
+        public string partTempStr;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
         public float radiatorArea = 1;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Radiator Area")]
+        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Radiator Area", guiFormat = "F2", guiUnits = " m2")]
         public float currentRadiatorArea;
 		[KSPField(isPersistant = false, guiActive = true, guiName = "Power Radiated")]
 		public string thermalPowerDissipStr;
@@ -515,6 +517,8 @@ namespace FNPlugin
 
                 radiatorTempStr = current_rad_temp.ToString("0.0") + "K / " + RadiatorTemperature.ToString("0.0") + "K";
 
+                partTempStr = part.temperature.ToString("0.0") + "K / " + part.maxTemp.ToString("0.0") + "K";
+
                 last_draw_update = update_count;
 
                 if (showColorHeat)
@@ -741,7 +745,7 @@ namespace FNPlugin
         {
             float currentTemperature = getRadiatorTemperature();
 
-            float partTempRatio = Mathf.Min((float)(part.temperature / 2700), 1);
+            float partTempRatio = Mathf.Min((float)(part.temperature / (part.maxTemp * 0.95)), 1);
 
             float radiatorTempRatio = Mathf.Min(currentTemperature / RadiatorTemperature * 1.05f, 1);
 

@@ -511,7 +511,8 @@ namespace FNPlugin
             get
             {
                 float normalised_fuel_factor = current_fuel_mode == null ? 1.0f : (float)current_fuel_mode.NormalisedReactionRate;
-                return RawPowerOutput * normalised_fuel_factor * (float)Math.Pow(ReactorEmbrittlemenConditionRatio, 2);
+                var result = RawPowerOutput * normalised_fuel_factor * Math.Sin(ReactorEmbrittlemenConditionRatio * Math.PI * 0.5);
+                return (float)result;
             }
         }
 

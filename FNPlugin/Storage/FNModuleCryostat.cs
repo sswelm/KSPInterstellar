@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 
 
-namespace FNPlugin 
+namespace FNPlugin
 {
     [KSPModule("Cyrostat Tank")]
-    class FNModuleCryostat : FNResourceSuppliableModule 
+    class FNModuleCryostat : FNResourceSuppliableModule
     {
         // Persistant
         [KSPField(isPersistant = true)]
@@ -80,38 +80,20 @@ namespace FNPlugin
             isDisabled = false;
         }
 
-        public override void OnStart(PartModule.StartState state) 
+        public override void OnStart(PartModule.StartState state)
         {
             if (fullPowerReqKW == 0)
                 fullPowerReqKW = powerReqKW;
 
             Events["Activate"].guiName = StartActionName;
             Events["Deactivate"].guiName = StopActionName;
-           
+
             //this.part.force_activate();
             this.enabled = true;
-
-            if (Planetarium.GetUniversalTime() != 0)
-                last_active_time = Planetarium.GetUniversalTime();
         }
 
-        double last_active_time;
-
-        public override void OnUpdate() 
+        public override void OnUpdate()
         {
-            if (Planetarium.GetUniversalTime() != 0)
-            {
-                var current_time = Planetarium.GetUniversalTime();
-                var fixedDeltaTime = current_time - last_active_time;
-
-                if (fixedDeltaTime == 0)
-                    return;
-
-                Update(fixedDeltaTime);
-                last_active_time = current_time;
-            }
-
-
             if (part.Resources.Contains(resourceName))
                 cryostat_resource = part.Resources[resourceName];
             else
@@ -127,7 +109,7 @@ namespace FNPlugin
                 Fields["boiloffStr"].guiActive = showBoiloff && boiloff > 0.00001;
                 Fields["externalTemperature"].guiActive = showTemp && coolingIsRelevant;
 
-                var atmosphereModifier = convectionMod == -1 ?  0 : convectionMod + (FlightGlobals.getStaticPressure(vessel.transform.position) / 100) / (convectionMod + 1);
+                var atmosphereModifier = convectionMod == -1 ? 0 : convectionMod + (FlightGlobals.getStaticPressure(vessel.transform.position) / 100) / (convectionMod + 1);
 
                 externalTemperature = (float)part.temperature;
 
@@ -162,7 +144,7 @@ namespace FNPlugin
             }
         }
 
-        public void Update(double fixedDeltaTime)
+        public void FixedUpdate()
         {
             if (cryostat_resource == null || cryostat_resource.amount <= 0.0)
             {
@@ -172,14 +154,14 @@ namespace FNPlugin
 
             if (!isDisabled && currentPowerReq > 0)
             {
-                var fixedPowerReqKW = (float)(currentPowerReq * fixedDeltaTime);
+                var fixedPowerReqKW = (float)(currentPowerReq * TimeWarp.fixedDeltaTime);
 
                 float fixedRecievedChargeKW = consumeFNResource(fixedPowerReqKW / 1000.0f, FNResourceManager.FNRESOURCE_MEGAJOULES) * 1000.0f;
 
                 if (powerReqKW < 1000 && fixedRecievedChargeKW <= fixedPowerReqKW)
                     fixedRecievedChargeKW += part.RequestResource("ElectricCharge", fixedPowerReqKW - fixedRecievedChargeKW);
 
-                recievedPowerKW = (float)(fixedRecievedChargeKW / fixedDeltaTime);
+                recievedPowerKW = fixedRecievedChargeKW / TimeWarp.fixedDeltaTime;
             }
             else
                 recievedPowerKW = 0;
@@ -193,26 +175,27 @@ namespace FNPlugin
 
             if (boiloff > 0.000001)
             {
-                cryostat_resource.amount = Math.Max(0, cryostat_resource.amount - boiloff * fixedDeltaTime);
+                cryostat_resource.amount = Math.Max(0, cryostat_resource.amount - boiloff * TimeWarp.fixedDeltaTime);
                 boiloffStr = boiloff.ToString("0.000000") + " L/s " + cryostat_resource.resourceName;
             }
             else
                 boiloffStr = "0.000000 L/s " + cryostat_resource.resourceName;
         }
 
-        public override string getResourceManagerDisplayName() 
+        public override string getResourceManagerDisplayName()
         {
             return resourceGUIName + " Cryostat";
         }
 
-        public override int getPowerPriority() 
+        public override int getPowerPriority()
         {
             return 2;
         }
 
-        public override string GetInfo() 
+        public override string GetInfo()
         {
             return "Power Requirements: " + powerReqKW.ToString("0.0") + " KW\n Powered Boil Off Fraction: " + boilOffRate * GameConstants.EARH_DAY_SECONDS + " /day\n Unpowered Boil Off Fraction: " + (boilOffRate + boilOffAddition) * boilOffMultiplier * GameConstants.EARH_DAY_SECONDS + " /day";
         }
     }
 }
+

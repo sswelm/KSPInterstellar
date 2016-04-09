@@ -65,11 +65,11 @@ namespace FNPlugin
         public float colorRatio;
 
         // non persistant
-        [KSPField(isPersistant = false, guiActiveEditor = false, guiName = "Mass", guiUnits = " t")]
+        [KSPField(isPersistant = false, guiActiveEditor = true, guiName = "Mass", guiUnits = " t")]
         public float partMass;
 		[KSPField(isPersistant = false)]
 		public bool isDeployable = false;
-        [KSPField(isPersistant = false, guiActiveEditor = false, guiName = "Converction Bonus", guiUnits = " K")]
+        [KSPField(isPersistant = false, guiActiveEditor = false, guiName = "Converction Bonus")]
 		public float convectiveBonus = 1.0f;
 		[KSPField(isPersistant = false)]
 		public string animName;
@@ -95,10 +95,13 @@ namespace FNPlugin
 		public string radiatorTempStr;
         [KSPField(isPersistant = false, guiActive = true, guiName = "Part Temp")]
         public string partTempStr;
-        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Surface Area", guiFormat = "F2", guiUnits = " m2")]
         public float radiatorArea = 1;
-        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Radiator Area", guiFormat = "F2", guiUnits = " m2")]
-        public float currentRadiatorArea;
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false)]
+        public float areaMultiplier = 1;
+
+        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = true, guiName = "Effective Area", guiFormat = "F2", guiUnits = " m2")]
+        public float effectiveRadiatorArea;
 		[KSPField(isPersistant = false, guiActive = true, guiName = "Power Radiated")]
 		public string thermalPowerDissipStr;
 		[KSPField(isPersistant = false, guiActive = true, guiName = "Power Convected")]
@@ -158,7 +161,11 @@ namespace FNPlugin
 
         public float RadiatorArea
         {
-            get { return hasSurfaceAreaUpgradeTechReq ? radiatorArea * 1.7f : radiatorArea; }
+            get 
+            {
+                var baseRadiatorArea = radiatorArea * areaMultiplier;
+                return hasSurfaceAreaUpgradeTechReq ? baseRadiatorArea * 1.7f : baseRadiatorArea; 
+            }
         }
 
         private void DetermineGenerationType()
@@ -287,7 +294,7 @@ namespace FNPlugin
         }
 
 
-		[KSPEvent(guiActive = true, guiName = "Deploy Radiator", active = true)]
+		[KSPEvent(guiActive = true, guiActiveEditor=true, guiName = "Deploy Radiator", active = true)]
 		public void DeployRadiator() 
         {
             isAutomated = false;
@@ -306,12 +313,13 @@ namespace FNPlugin
 
             if (deployAnim == null) return;
 
+            deployAnim[animName].enabled = true;
             deployAnim[animName].speed = 0.5f;
             deployAnim[animName].normalizedTime = 0f;
             deployAnim.Blend(animName, 2f);
         }
 
-		[KSPEvent(guiActive = true, guiName = "Retract Radiator", active = false)]
+        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Retract Radiator", active = false)]
 		public void RetractRadiator() 
         {
             if (!isDeployable) return;
@@ -332,6 +340,7 @@ namespace FNPlugin
 
             if (deployAnim == null) return;
 
+            deployAnim[animName].enabled = true;
             deployAnim[animName].speed = -0.5f;
             deployAnim[animName].normalizedTime = 1f;
             deployAnim.Blend(animName, 2f);
@@ -420,6 +429,18 @@ namespace FNPlugin
                     heatStates = SetUpAnimation(thermalAnim, this.part);
                 SetHeatAnimationRatio(0);
 
+                deployAnim = part.FindModelAnimators(animName).FirstOrDefault();
+                if (deployAnim != null)
+                {
+                    deployAnim[animName].layer = 1;
+                    deployAnim[animName].speed = 0;
+
+                    if (radiatorIsEnabled)
+                        deployAnim[animName].normalizedTime = 1;
+                    else
+                        deployAnim[animName].normalizedTime = 0;
+                }
+
                 if (state == StartState.Editor)
                 {
                     if (hasTechsRequiredToUpgrade())
@@ -449,18 +470,7 @@ namespace FNPlugin
 
                 array = part.FindModelComponents<Renderer>();
 
-                deployAnim = part.FindModelAnimators(animName).FirstOrDefault();
-                if (deployAnim != null)
-                {
-                    deployAnim[animName].layer = 1;
 
-                    if (radiatorIsEnabled)
-                    {
-                        deployAnim[animName].normalizedTime = 1.0f;
-                        deployAnim[animName].enabled = true;
-                        deployAnim.Sample();
-                    }
-                }
 
                 if (isDeployable)
                 {
@@ -518,14 +528,17 @@ namespace FNPlugin
             Events["SwitchAutomation"].guiName = isAutomated ? "Disable Automation" : "Enable Automation";
         }
 
+        public void Update()
+        {
+            Events["DeployRadiator"].active = Events["DeployRadiator"].guiActiveEditor =  !radiatorIsEnabled && isDeployable && moduleDeployableRadiator == null;
+            Events["RetractRadiator"].active = Events["RetractRadiator"].guiActiveEditor = radiatorIsEnabled && isDeployable && moduleDeployableRadiator == null;
+        }
+
         public override void OnUpdate() // is called while in flight
         {
             if (update_count - last_draw_update > 8)
             {
                 UpdateEnableAutomation();
-
-                Events["DeployRadiator"].active = !radiatorIsEnabled && isDeployable && moduleDeployableRadiator == null;
-                Events["RetractRadiator"].active = radiatorIsEnabled && isDeployable && moduleDeployableRadiator == null;
 
                 if (ResearchAndDevelopment.Instance != null)
                     Events["RetrofitRadiator"].active = !isupgraded && ResearchAndDevelopment.Instance.Science >= upgradeCost && hasrequiredupgrade;
@@ -560,7 +573,7 @@ namespace FNPlugin
 
         public void FixedUpdate() // FixedUpdate is also called when not activated
         {
-            currentRadiatorArea = RadiatorArea;
+            effectiveRadiatorArea = RadiatorArea;
 
             if (!HighLogic.LoadedSceneIsFlight) return;
 

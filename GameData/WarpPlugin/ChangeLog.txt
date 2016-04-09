@@ -21,6 +21,16 @@ KSPI 1.7.0 Released on 2016-03-28
     Fusion Mode proton-Boron11 now required Exotic Fusion Tech
     Darkened Wrapped Radiators
 
+1.7.3
+
+* Added Interstellar Wrapped Tanks which can be ejected, ideal for launches
+* Added Curved Graphite Radiators and Edge
+* Fixed some log error message in VAB
+* Depending on Nozzle type, Antimatter reactor will perform either as Gas Core or Plasma Antimatter reactor
+* Balance: Reduced Antimatter reactor maximum problem
+* Improved Antimatter  Fuel Efficiency
+* Improved responsiveness Thermal Launch nozzle
+
 
 
 

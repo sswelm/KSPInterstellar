@@ -60,6 +60,8 @@ namespace FNPlugin
 
         [KSPField(isPersistant = false, guiActive = false)]
         public string surfaceAreaUpgradeTechReq = null;
+        [KSPField(isPersistant = false, guiActive = false)]
+        public float surfaceAreaUpgradeMult = 1.6f;
 
         [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Color Ratio")]
         public float colorRatio;
@@ -164,7 +166,7 @@ namespace FNPlugin
             get 
             {
                 var baseRadiatorArea = radiatorArea * areaMultiplier;
-                return hasSurfaceAreaUpgradeTechReq ? baseRadiatorArea * 1.7f : baseRadiatorArea; 
+                return hasSurfaceAreaUpgradeTechReq ? baseRadiatorArea * surfaceAreaUpgradeMult : baseRadiatorArea; 
             }
         }
 
@@ -441,6 +443,8 @@ namespace FNPlugin
                         deployAnim[animName].normalizedTime = 0;
                 }
 
+                moduleDeployableRadiator = part.FindModuleImplementing<ModuleDeployableRadiator>();
+
                 if (state == StartState.Editor)
                 {
                     if (hasTechsRequiredToUpgrade())
@@ -466,11 +470,9 @@ namespace FNPlugin
                 // add to static list of all radiators
                 FNRadiator.list_of_all_radiators.Add(this);
 
-                moduleDeployableRadiator = part.FindModuleImplementing<ModuleDeployableRadiator>();
+                
 
                 array = part.FindModelComponents<Renderer>();
-
-
 
                 if (isDeployable)
                 {
@@ -585,7 +587,7 @@ namespace FNPlugin
                 float low_temp = (float)FlightGlobals.getExternalTemperature(vessel.transform.position);
 
                 float delta_temp = Mathf.Max(0, (float)current_rad_temp - low_temp);
-                double conv_power_dissip = pressure * delta_temp * RadiatorArea * rad_const_h / 1e6f * TimeWarp.fixedDeltaTime * convectiveBonus;
+                float conv_power_dissip = pressure * delta_temp * radiatorArea * rad_const_h / 1e6f * TimeWarp.fixedDeltaTime * convectiveBonus;
                 if (!radiatorIsEnabled)
                     conv_power_dissip = conv_power_dissip / 2.0f;
 

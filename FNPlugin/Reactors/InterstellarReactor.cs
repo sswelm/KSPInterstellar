@@ -219,8 +219,10 @@ namespace FNPlugin
         public string currentCPwr = String.Empty;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Fuel")]
         public string fuelModeStr = String.Empty;
-        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Connections")]
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Connections Surface")]
         public string connectedRecieversStr = String.Empty;
+        [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "Reactor Surface", guiUnits = " m2")]
+        public float reactorSurface;
 
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Max Power to Supply frame")]
         protected float max_power_to_supply = 0;
@@ -374,24 +376,14 @@ namespace FNPlugin
         public void AttachThermalReciever(Guid key, float radius)
         {
             if (!connectedRecievers.ContainsKey(key))
-            {
                 connectedRecievers.Add(key, radius);
-                connectedRecieversSum = connectedRecievers.Sum(r => r.Value);
-                connectedRecieversFraction = connectedRecievers.ToDictionary(a => a.Key, a => a.Value / connectedRecieversSum);
-            }
-
             UpdateConnectedRecieversStr();
         }
 
         public void DetachThermalReciever(Guid key)
         {
             if (connectedRecievers.ContainsKey(key))
-            {
                 connectedRecievers.Remove(key);
-                connectedRecieversSum = connectedRecievers.Sum(r => r.Value);
-                connectedRecieversFraction = connectedRecievers.ToDictionary(a => a.Key, a => a.Value / connectedRecieversSum);
-            }
-
             UpdateConnectedRecieversStr();
         }
 
@@ -408,7 +400,11 @@ namespace FNPlugin
         {
             if (connectedRecievers == null) return;
 
-            connectedRecieversStr = connectedRecievers.Count().ToString() + " (" + connectedRecieversSum.ToString("0.000") + "m)";
+            connectedRecieversSum = connectedRecievers.Sum(r => Mathf.Pow(r.Value, 2));
+            connectedRecieversFraction = connectedRecievers.ToDictionary(a => a.Key, a => Mathf.Pow(a.Value, 2) / connectedRecieversSum);
+
+            reactorSurface = Mathf.Pow(radius, 2);
+            connectedRecieversStr = connectedRecievers.Count() + " (" + connectedRecieversSum.ToString("0.000") + " m2)";
         }
 
         public float ThermalTransportationEfficiency { get { return heatTransportationEfficiency; } }
@@ -910,8 +906,13 @@ namespace FNPlugin
         {
             currentRawPowerOutput = RawPowerOutput;
 
-            Events["ActivateReactor"].active = (HighLogic.LoadedSceneIsEditor && startDisabled);
-            Events["DeactivateReactor"].active = (HighLogic.LoadedSceneIsEditor && !startDisabled);
+            if (HighLogic.LoadedSceneIsEditor)
+            {
+                reactorSurface = Mathf.Pow(radius, 2);
+
+                Events["ActivateReactor"].active = startDisabled;
+                Events["DeactivateReactor"].active = !startDisabled;
+            }
         }
 
         protected void UpdateFuelMode()

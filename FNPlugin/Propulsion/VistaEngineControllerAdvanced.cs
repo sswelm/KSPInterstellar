@@ -101,7 +101,8 @@ namespace FNPlugin
         public string upgradeTechReq = "advFusionReactions";
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = true, guiName = "upgrade tech 2")]
         public string upgradeTechReq2 = "exoticReactions";
-
+        [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Max Thrust", guiUnits = " kN")]
+        public float maximumThrust;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Current Throtle", guiFormat = "F2")]
         public float throttle;
         [KSPField(isPersistant = false, guiActive = true, guiActiveEditor = false, guiName = "Fusion Ratio", guiFormat = "F2")]
@@ -121,6 +122,7 @@ namespace FNPlugin
         public float radiatorPerformance;
         [KSPField(isPersistant = false, guiActive = false, guiActiveEditor = false, guiName = "Emisiveness")]
         public float partEmissiveConstant;
+
 
         // abstracts
         protected abstract float SelectedIsp { get; }
@@ -376,11 +378,15 @@ namespace FNPlugin
                 var currentIsp = SelectedIsp; 
                 FloatCurve newISP = new FloatCurve();
                 newISP.Add(0, currentIsp);
+                newISP.Add(1, 0);
                 curEngineT.atmosphereCurve = newISP;
 
                 // Update FuelFlow
                 var maxFuelFlow = fusionRatio * MaximumThrust / currentIsp / PluginHelper.GravityConstant;
                 curEngineT.maxFuelFlow = maxFuelFlow;
+                curEngineT.maxThrust = MaximumThrust;
+
+                maximumThrust = MaximumThrust;
 
                 if (!curEngineT.getFlameoutState && plasma_ratio < 0.75 && recievedPowerFixed > 0)
                     curEngineT.status = "Insufficient Electricity";
@@ -395,10 +401,13 @@ namespace FNPlugin
                 var currentIsp = SelectedIsp; 
                 FloatCurve newISP = new FloatCurve();
                 newISP.Add(0, (float)currentIsp);
+                newISP.Add(1, 0);
                 curEngineT.atmosphereCurve = newISP;
+                curEngineT.maxThrust = MaximumThrust;
                 var rateMultplier = minISP / SelectedIsp;
 
-                curEngineT.maxFuelFlow = 0;
+                var maxFuelFlow = MaximumThrust / currentIsp / PluginHelper.GravityConstant;
+                curEngineT.maxFuelFlow = maxFuelFlow;
                 curEngineT.propellants.FirstOrDefault(pr => pr.name == InterstellarResourcesConfiguration.Instance.Deuterium).ratio = (float)(standard_deuterium_rate) / rateMultplier;
                 curEngineT.propellants.FirstOrDefault(pr => pr.name == InterstellarResourcesConfiguration.Instance.Tritium).ratio = (float)(standard_tritium_rate) / rateMultplier;
             }
